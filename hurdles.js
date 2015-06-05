@@ -27,33 +27,8 @@ function QueryException(message, query, type) {
   _.assign(this, {
     message: message,
     query: query,
-    type: type,
-    qualifiedQuery: query,
-    qualifiedType: type,
-    qualifyQuery: function (parentQuery, parentType) {
-      self.qualifiedQuery = parentQuery;
-      if (parentType) {
-        self.qualifiedType = parentType + '.' + self.qualifiedType;
-      }
-    }
+    type: type
   });
-}
-
-function executeNestedQuery(query, type, parentOutput) {
-  console.log('executeNestedQuery', query, type);
-  var output = {};
-  _.each(getQueries(query), function (nestedQuery, nestedType) {
-    try {
-      nestedQuery['_' + type] = parentOutput;
-      output[nestedType] = executeQuery(nestedQuery, nestedType);
-    } catch (e) {
-      if (e.qualifyQuery !== undefined) {
-        e.qualifyQuery(query, type);
-      }
-      throw e;
-    }
-  });
-  return output;
 }
 
 function pickFields(output, query, type) {
@@ -69,51 +44,91 @@ function pickFields(output, query, type) {
   return _.pick(output, expectedFields);
 }
 
-function handleQueryType(query, type) {
-  var inputs = {};
-  if (_.isArray(query)) {
-    inputs = getInputs(query[0]);
-  } else {
-    inputs = getInputs(query);
-  }
+function handleQuery(query, type, upstream) {
+  var inputs = _.isArray(query) ? getInputs(query[0]) : getInputs(query);
+  _.assign(inputs, upstream || {});
 
   if (!handlers[type]) {
     throw new QueryException('Querying for unknown type', query, type);
   }
+
   console.log('handling query type =', type, ', inputs =', inputs, ', query =', query);
-  return handlers[type](inputs, query);
+  return handlers[type](inputs, query).then(function (output) {
+    if (_.isPlainObject(query) && !_.isPlainObject(output)) {
+      throw new QueryException('Query output mismatch. Expected plain object, got '
+        + JSON.stringify(output), query, type);
+    } else if (_.isArray(query) && !_.isArray(output)) {
+      throw new QueryException('Query output mismatch. Expected array, got '
+        + JSON.stringify(output), query, type);
+    }
+
+    if (_.isPlainObject(output)) {
+      output = pickFields(output, query, type);
+    }
+
+    if (_.isArray(output)) {
+      output = _.map(output, function(out) {
+        return pickFields(out, query[0], type);
+      });
+    }
+
+    return output;
+  });
+
 };
 
-function executeQuery(query, type) {
-  var output = {};
-
-  if (type) {
-    output = handleQueryType(query, type);
-    if (_.isPlainObject(query)) {
-      if (!_.isPlainObject(output)) {
-        throw new QueryException('Query output mismatch. Expected plain object, got '
-          + JSON.stringify(output), query, type);
-      }
-      output = pickFields(output, query, type);
-      _.assign(output, executeNestedQuery(query, type, output));
-    } else if (_.isArray(query)) {
-      if (!_.isArray(output)) {
-        throw new QueryException('Query output mismatch. Expected array, got '
-          + JSON.stringify(output), query, type);
-      }
-      output = _.map(output, function (item) {
-        var o = pickFields(item, query[0], type);
-        _.assign(o, executeNestedQuery(query[0], type, output));
-        return o;
-      });
-    } else {
-      throw new QueryException('Cannot execute query: ' + JSON.stringify(query), query, type);
+function buildQueryPromises(query, type, parent) {
+  var plan = {
+    parent: parent,
+    query: query,
+    type: type,
+    promiseFactory: type ? function (upstream) {
+      return handleQuery(query, type, upstream);
+    } : function() {
+      return Promise.resolve({});
     }
-  } else {
-    output = _.cloneDeep(query);
-    _.assign(output, executeNestedQuery(query, type, output));
+  };
+  if (_.isArray(query)) {
+    plan.subQueries = _.map(getQueries(query[0]), function (subQuery, subType) {
+      return buildQueryPromises(subQuery, subType, plan);
+    });
+  } else if (_.isPlainObject(query)) {
+    plan.subQueries = _.map(getQueries(query), function (subQuery, subType) {
+      return buildQueryPromises(subQuery, subType, plan);
+    });
   }
-  return output;
+  return plan;
+}
+
+function runSubPlans(plan, output, _upstream) {
+  var upstream = {};
+  upstream[plan.type] = _.cloneDeep(output);
+  _.assign(upstream[plan.type], _upstream || {});
+
+  return Promise.all(_.map(plan.subQueries, function(subPlan) {
+    return runPlan(subPlan, upstream);
+  })).then(function(subOutputs) {
+    var mergedOutput = output;
+    _.each(_.zipObject(_.map(plan.subQueries, 'type'), subOutputs), function (subOutput, subPlanType) {
+      mergedOutput[subPlanType] = subOutput;
+    });
+    return mergedOutput;
+  });
+
+}
+
+function runPlan(plan, upstream) {
+  console.log('running plan', plan.type, plan.query);
+
+  return plan.promiseFactory(upstream).then(function (output) {
+    if (_.isArray(output)) {
+      return Promise.all(_.map(output, function(out) {
+        return runSubPlans(plan, out, upstream);
+      }));
+    } else {
+      return runSubPlans(plan, output, upstream);
+    }
+  });
 }
 
 function getInputs(query) {
@@ -143,7 +158,8 @@ module.exports = {
 
   query: function (query, type) {
     try {
-      return executeQuery(query, type);
+      var plan = buildQueryPromises(query, type, null);
+      return runPlan(plan);
     } catch (e) {
       console.log(e);
       throw e;
