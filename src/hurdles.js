@@ -23,21 +23,22 @@ var _ = require('lodash');
 //};
 
 function hurdles(handlers) {
-
-
   function QueryException() {
     var tmp = Error.apply(this, arguments);
     tmp.name = this.name = 'QueryException'
 
     this.message = tmp.message;
-    /*this.stack = */Object.defineProperty(this, 'stack', { // getter for more optimizy goodness
-      get: function() {
+    /*this.stack = */
+    Object.defineProperty(this, 'stack', { // getter for more optimizy goodness
+      get: function () {
         return tmp.stack
       }
     });
-    return this
+    return this;
   }
-  var IntermediateInheritor = function() {}
+
+  var IntermediateInheritor = function () {
+  };
   IntermediateInheritor.prototype = Error.prototype;
   QueryException.prototype = new IntermediateInheritor();
 
@@ -121,8 +122,10 @@ function hurdles(handlers) {
 
   function runSubPlans(plan, output, _upstream) {
     var upstream = {};
-    upstream[plan.type] = _.cloneDeep(output);
-    _.assign(upstream[plan.type], _upstream || {});
+    if (plan.type) {
+      upstream[plan.type] = _.cloneDeep(output);
+      _.assign(upstream[plan.type], _upstream || {});
+    }
 
     return Promise.all(_.map(plan.subQueries, function (subPlan) {
       console.log('subplan type', subPlan.type, 'output', output);
@@ -138,12 +141,9 @@ function hurdles(handlers) {
       });
       return mergedOutput;
     });
-
   }
 
   function runPlan(plan, upstream) {
-    //console.log('running plan', plan.type, plan.query);
-
     return plan.promiseFactory(upstream).then(function (output) {
       if (_.isArray(output)) {
         return Promise.all(_.map(output, function (out) {

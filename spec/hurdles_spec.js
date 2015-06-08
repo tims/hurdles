@@ -4,13 +4,15 @@ var _ = require('lodash');
 describe('hurdles', function () {
   var output;
   var asyncError;
+  var handlerInputs;
   var foo = {a: 1, b: 2};
   var bar = {x: 3, y: 4};
 
   function handlers(typeToObjectMap) {
     var handlers = {};
     _.each(typeToObjectMap, function (v, k) {
-      handlers[k] = function () {
+      handlers[k] = function (input) {
+        handlerInputs[k] = input;
         return Promise.resolve(v);
       };
     });
@@ -20,6 +22,7 @@ describe('hurdles', function () {
   beforeEach(function () {
     output = null;
     asyncError = null;
+    handlerInputs = {};
   });
 
 
@@ -102,7 +105,7 @@ describe('hurdles', function () {
     });
   });
 
-  describe('query with nested shape that root handler does not fill', function () {
+  describe('multiple handlers and query with nested shape', function () {
     beforeEach(function (done) {
       var hurdles = hurdlesFactory(handlers({foo: foo, bar: bar}));
       runQuery(hurdles, {
@@ -117,7 +120,7 @@ describe('hurdles', function () {
       }, done);
     });
 
-    it("fills nested shape using handler", function () {
+    it("fills nested shape using second handler", function () {
       if (asyncError) throw asyncError;
       var expected = {
         foo: {
@@ -129,6 +132,84 @@ describe('hurdles', function () {
           }
         }
       };
+      expect(output).toEqual(expected);
+    });
+
+    it("second handler receives first handler's output as input", function () {
+      if (asyncError) throw asyncError;
+      var expected = {
+        foo: {
+          a: foo.a,
+          b: foo.b,
+          bar: {
+            x: bar.x,
+            y: bar.y
+          }
+        }
+      };
+      expect(handlerInputs.bar).toEqual({foo: foo});
+    });
+  });
+
+
+  describe('query with nested array that root handler fills', function () {
+    var expected = {
+      foo: {
+        a: foo.a,
+        b: foo.b,
+        bars: [{x: 1, y: 2}, {x: 1, y: 2}]
+      }
+    }
+    beforeEach(function (done) {
+      var hurdles = hurdlesFactory(handlers(expected));
+      runQuery(hurdles, {
+        foo: {
+          a: null,
+          b: null,
+          bars: [{
+            x: null,
+            y: null
+          }]
+        }
+      }, done);
+    });
+
+    it("fills nested shape using handler", function () {
+      if (asyncError) throw asyncError;
+      expect(output).toEqual(expected);
+    });
+  });
+
+  describe('query with nested array that secondary handler fills', function () {
+    var expected = {
+      foo: {
+        a: foo.a,
+        b: foo.b,
+        bars: [{x: 1, y: 2}, {x: 3, y: 4}]
+      }
+    }
+    beforeEach(function (done) {
+      var hurdles = hurdlesFactory(handlers({
+        foo: {
+          a: foo.a,
+          b: foo.b
+        },
+        bars: [{x: 1, y: 2,}, {x: 3, y: 4}]
+      }));
+      runQuery(hurdles, {
+        foo: {
+          a: null,
+          b: null,
+          bars: [{
+            x: null,
+            y: null
+          }]
+        }
+      }, done);
+    });
+
+    it("fills nested shape using handler", function () {
+      if (asyncError) throw asyncError;
       expect(output).toEqual(expected);
     });
   });
