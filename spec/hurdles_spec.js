@@ -26,8 +26,8 @@ describe('hurdles', function () {
   });
 
 
-  function runQuery(hurdles, q, done) {
-    hurdles.query(q).then(function (o) {
+  function readQuery(hurdles, q, done) {
+    hurdles.read(q).then(function (o) {
       output = o;
       done()
     }).catch(function (e) {
@@ -40,7 +40,7 @@ describe('hurdles', function () {
     beforeEach(function (done) {
       var hurdles = hurdlesFactory(handlers({foo: foo}));
       var query = {foo: {a: null, b: null}};
-      runQuery(hurdles, query, done);
+      readQuery(hurdles, query, done);
     });
     it("has same shape and filled values", function () {
       if (asyncError) throw asyncError;
@@ -53,7 +53,7 @@ describe('hurdles', function () {
       var hurdles = hurdlesFactory(handlers({}));
       var query = {foo: {a: null, b: null}};
 
-      runQuery(hurdles, query, done);
+      readQuery(hurdles, query, done);
     });
 
     it("throws error", function () {
@@ -64,7 +64,7 @@ describe('hurdles', function () {
   describe('query for some fields', function () {
     beforeEach(function (done) {
       var hurdles = hurdlesFactory(handlers({foo: foo}));
-      runQuery(hurdles, {foo: {a: null}}, done);
+      readQuery(hurdles, {foo: {a: null}}, done);
     });
     it("selects only some fields", function () {
       if (asyncError) throw asyncError;
@@ -87,7 +87,7 @@ describe('hurdles', function () {
       var hurdles = hurdlesFactory(handlers({
         foo: expected.foo
       }));
-      runQuery(hurdles, {
+      readQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -108,7 +108,7 @@ describe('hurdles', function () {
   describe('multiple handlers and query with nested shape', function () {
     beforeEach(function (done) {
       var hurdles = hurdlesFactory(handlers({foo: foo, bar: bar}));
-      runQuery(hurdles, {
+      readQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -162,7 +162,7 @@ describe('hurdles', function () {
     }
     beforeEach(function (done) {
       var hurdles = hurdlesFactory(handlers(expected));
-      runQuery(hurdles, {
+      readQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -196,7 +196,41 @@ describe('hurdles', function () {
         },
         bars: [{x: 1, y: 2,}, {x: 3, y: 4}]
       }));
-      runQuery(hurdles, {
+      readQuery(hurdles, {
+        foo: {
+          a: null,
+          b: null,
+          bars: [{
+            x: null,
+            y: null
+          }]
+        }
+      }, done);
+    });
+
+    it("fills nested shape using handler", function () {
+      if (asyncError) throw asyncError;
+      expect(output).toEqual(expected);
+    });
+  });
+
+  describe('query with nested array that secondary handler fills', function () {
+    var expected = {
+      foo: {
+        a: foo.a,
+        b: foo.b,
+        bars: [{x: 1, y: 2}, {x: 3, y: 4}]
+      }
+    }
+    beforeEach(function (done) {
+      var hurdles = hurdlesFactory(handlers({
+        foo: {
+          a: foo.a,
+          b: foo.b
+        },
+        bars: [{x: 1, y: 2,}, {x: 3, y: 4}]
+      }));
+      readQuery(hurdles, {
         foo: {
           a: null,
           b: null,

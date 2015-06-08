@@ -6,8 +6,8 @@ gulp.task('default', ['serve']);
 
 gulp.task('serve', function () {
   nodemon({
-    watch: ['*.js'],
-    script: 'index.js'
+    watch: ['src/**/*.js'],
+    script: 'src/index.js'
   });
 });
 

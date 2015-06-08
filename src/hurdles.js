@@ -64,16 +64,20 @@ function hurdles(handlers) {
     return _.pick(output, expectedFields);
   }
 
-  function handleQuery(query, type, upstream) {
+  function handleQuery(query, type, upstream, method) {
     var inputs = _.isArray(query) ? getInputs(query[0]) : getInputs(query);
     _.assign(inputs, upstream || {});
 
     if (!handlers[type]) {
       throw new QueryException('Querying for unhandled type ' + type + ' with query ' + JSON.stringify(query));
     }
+    if (!handlers[type][method]) {
+      throw new QueryException('No method ' + method + ' for ' + type + ' handler, with query ' + JSON.stringify(query));
+    }
 
-    console.log('handling query type =', type, ', inputs =', inputs, ', query =', query);
-    return handlers[type](inputs, query).then(function (output) {
+    //console.log('handling query type =', type, ', inputs =', inputs, ', query =', query);
+    console.log(method + 'ing ' + type + ' with input ' + JSON.stringify(inputs));
+    return handlers[type][method](inputs, query).then(function (output) {
       if (_.isPlainObject(query) && !_.isPlainObject(output)) {
         throw new QueryException('Query output mismatch. Expected plain object, got '
           + JSON.stringify(output) + ' for type ' + type + ' and query ' + JSON.stringify(query));
@@ -94,16 +98,29 @@ function hurdles(handlers) {
 
       return output;
     });
-
   };
 
+  function getQueryMethod(query) {
+    switch (query._method) {
+      case 'insert':
+      case 'update':
+      case 'delete':
+        return query._method;
+        break;
+      default:
+        return 'read';
+    }
+  }
+
   function buildQueryPromises(query, type, parent) {
+    var method = getQueryMethod(query);
     var plan = {
       parent: parent,
       query: query,
       type: type,
+      method: method,
       promiseFactory: type ? function (upstream) {
-        return handleQuery(query, type, upstream);
+        return handleQuery(query, type, upstream, method);
       } : function () {
         return Promise.resolve({});
       }
@@ -128,7 +145,7 @@ function hurdles(handlers) {
     }
 
     return Promise.all(_.map(plan.subQueries, function (subPlan) {
-      console.log('subplan type', subPlan.type, 'output', output);
+      //console.log('subplan type', subPlan.type, 'output', output);
       if (output[subPlan.type]) {
         return Promise.resolve(output[subPlan.type]);
       } else {
@@ -174,12 +191,12 @@ function hurdles(handlers) {
   return {
     QueryException: QueryException,
 
-    query: function (query, type) {
+    run: function (query, type) {
       try {
         var plan = buildQueryPromises(query, type, null);
         return runPlan(plan);
       } catch (e) {
-        console.error(e);
+        console.error(e.stack);
         throw e;
       }
     }
