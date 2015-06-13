@@ -7,6 +7,10 @@ function isQuery(key) {
 }
 
 function getShape(queryDef) {
+  if (_.isArray(queryDef) || _.isEmpty(queryDef)) {
+    return queryDef;
+  }
+
   var shape = {}
   _.each(queryDef, function (value, key) {
     if (isQuery(key)) { // TODO: And is not a mutation. We should not allow a query to fill it's children if they are mutations.
@@ -66,12 +70,12 @@ function findQueries(nestedQueryDef, pathSoFar) {
           shape: getShape(queryDef)
         }];
       } else {
-        if (!_.isPlainObject(queryDef) && queryDef != null) {
-          path.push(key);
+        path.push(key);
+        if (!_.isEmpty(queryDef)) {
           qs = [{
             name: key,
             path: path,
-            shape: queryDef
+            shape: getShape(queryDef)
           }];
         }
       }
@@ -81,54 +85,55 @@ function findQueries(nestedQueryDef, pathSoFar) {
   return queries;
 }
 
-function parseNestedQuery(queryKey, nestedQuery) {
-  var fields = _.filter(_.keys(nestedQuery), function (key) {
-    return !isQuery(key, nestedQuery[key]);
-  });
-  var children = _.map(_.filter(_.keys(nestedQuery), function (key) {
-    return isQuery(key, nestedQuery[key]);
-  }), function (childKey) {
-    return parseNestedQuery(childKey, nestedQuery[childKey]);
-  });
-  return {
-    action: 'get',
-    name: queryKey,
-    fields: fields,
-    children: children
-  }
-}
+//
+//function parseNestedQuery(queryKey, nestedQuery) {
+//  var fields = _.filter(_.keys(nestedQuery), function (key) {
+//    return !isQuery(key, nestedQuery[key]);
+//  });
+//  var children = _.map(_.filter(_.keys(nestedQuery), function (key) {
+//    return isQuery(key, nestedQuery[key]);
+//  }), function (childKey) {
+//    return parseNestedQuery(childKey, nestedQuery[childKey]);
+//  });
+//  return {
+//    action: 'get',
+//    name: queryKey,
+//    fields: fields,
+//    children: children
+//  }
+//}
 
 function runQuery(query, input) {
 
 }
 
 var handlers = {
-  'root': function(query, input) {
+  'root': function (query, input) {
     return Promise.resolve({});
   },
-  'posts': function(query, input) {
-    console.log('posts received input', input);
+  'posts': function (query, input) {
+    //console.log('posts received input', input);
+    return Promise.resolve([{id:1}, {id:2}]);
+  },
+  'user': function (query, input) {
+    //console.log('user received input', input);
     return Promise.resolve(query.shape);
   },
-  'user': function(query, input) {
-    console.log('user received input', input);
-    return Promise.resolve(query.shape);
-  },
-  'cogs': function(query, input) {
+  'cogs': function (query, input) {
     console.log('cogs received input', input);
     return Promise.resolve(query.shape);
   },
-  'x': function(query, input) {
-    console.log('x received input', input);
+  'x': function (query, input) {
+    //console.log('x received input', input);
     return Promise.resolve(query.shape);
   }
 };
 
 function getHandler(name) {
-  return handlers[name] ? handlers[name] : function(query, input) {
-    return new Promise(function(resolve, reject) {
+  return handlers[name] ? handlers[name] : function (query, input) {
+    return new Promise(function (resolve, reject) {
       if (query.queryKey) {
-        console.log('rejecting', query.queryKey);
+        //console.log('rejecting', query.queryKey);
         reject(new Error('Query requires handler, but no handler found named ' + name));
       } else {
         console.log('resolving', query, query.queryKey);
@@ -156,10 +161,10 @@ function runQueries(queries) {
 
   function runTask(key, input) {
     var query = key === 'root' ? {name: 'root'} : queries[key];
-    console.log('key', key);
-    console.log('query.name', query.name);
-    console.log('query.path', query.path);
-    console.log('query.queryKey', query.queryKey);
+    //console.log('key', key);
+    //console.log('query.name', query.name);
+    //console.log('query.path', query.path);
+    //console.log('query.queryKey', query.queryKey);
 
     var children = tree[key];
     var handler = getHandler(query.name);
@@ -173,6 +178,30 @@ function runQueries(queries) {
       //}
 
 
+      if (_.isArray(output)) {
+        console.log('I am output!', output);
+        return Promise.all(_.map(output, function (out) {
+          if (!_.isPlainObject(out)) {
+            return out;
+          }
+          var newInput = _.cloneDeep(input);
+          newInput[query.name] = _.cloneDeep(out);
+          return Promise.all(_.map(children, function (child) {
+            return runTask(child, newInput).then(function (childOutput) {
+              return {
+                input: newInput,
+                query: queries[child],
+                output: childOutput
+              }
+            });
+          })).then(function (summaries) {
+            return _.reduce(summaries, function (acc, summary) {
+              acc[summary.query.name] = summary.output;
+              return acc;
+            }, out)
+          });
+        }));
+      }
 
       if (_.isPlainObject(output)) {
         var newInput = _.cloneDeep(input);
@@ -197,10 +226,10 @@ function runQueries(queries) {
 
   console.log(JSON.stringify(tree));
 
-  console.log(["=========================="]);
+  //console.log(["=========================="]);
   runTask('root', {}).then(function (output) {
     console.log(JSON.stringify(output));
-  }).catch(function(e) {
+  }).catch(function (e) {
     console.error('error', e.stack);
   });
 
@@ -283,10 +312,10 @@ var rootQuery = {
 };
 
 var homeQuery = Home.query(1);
-//console.log(JSON.stringify(homeQuery));
+console.log(JSON.stringify(homeQuery));
 //console.log(JSON.stringify(parseNestedQuery('root', homeQuery)));
 
 var queries = findQueries(homeQuery);
-//console.log(JSON.stringify(queries));
+console.log(JSON.stringify(queries));
 
 runQueries(queries);
