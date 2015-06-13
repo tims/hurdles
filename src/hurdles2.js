@@ -113,19 +113,23 @@ var handlers = {
   },
   'posts': function (query, input) {
     //console.log('posts received input', input);
-    return Promise.resolve([{id:1}, {id:2}]);
+    return Promise.resolve([{id: 1}, {id: 2}]);
   },
   'user': function (query, input) {
     //console.log('user received input', input);
     return Promise.resolve(query.shape);
   },
   'cogs': function (query, input) {
-    console.log('cogs received input', input);
+    //console.log('cogs received input', input);
     return Promise.resolve(query.shape);
   },
   'x': function (query, input) {
     //console.log('x received input', input);
     return Promise.resolve(query.shape);
+  },
+  'hmm': function (query, input) {
+    //console.log('x received input', input);
+    return Promise.resolve(123);
   }
 };
 
@@ -136,7 +140,7 @@ function getHandler(name) {
         //console.log('rejecting', query.queryKey);
         reject(new Error('Query requires handler, but no handler found named ' + name));
       } else {
-        console.log('resolving', query, query.queryKey);
+        //console.log('resolving', query, query.queryKey);
         resolve(query.shape);
       }
     });
@@ -159,6 +163,26 @@ function runQueries(queries) {
     tree[parent].push(child);
   });
 
+  function processChildren(query, children, input, output) {
+    var newInput = _.cloneDeep(input);
+    newInput[query.name] = _.cloneDeep(output);
+    return Promise.all(_.map(children, function (child) {
+      return runTask(child, newInput).then(function (childOutput) {
+        return {
+          input: newInput,
+          query: queries[child],
+          output: childOutput
+        }
+      });
+    })).then(function (summaries) {
+      return _.reduce(summaries, function (acc, summary) {
+        acc[summary.query.name] = summary.output;
+        return acc;
+      }, output)
+    });
+  }
+
+
   function runTask(key, input) {
     var query = key === 'root' ? {name: 'root'} : queries[key];
     //console.log('key', key);
@@ -169,57 +193,17 @@ function runQueries(queries) {
     var children = tree[key];
     var handler = getHandler(query.name);
     return handler(query, input).then(function (output) {
-      //if (_.isArray(output)) {
-      //  _.each(output, function (out) {
-      //    var newInput = _.cloneDeep(input);
-      //    newInput[query.name] = out;
-      //    runTask(child, newInput)
-      //  });
-      //}
-
-
       if (_.isArray(output)) {
-        console.log('I am output!', output);
         return Promise.all(_.map(output, function (out) {
           if (!_.isPlainObject(out)) {
             return out;
           }
-          var newInput = _.cloneDeep(input);
-          newInput[query.name] = _.cloneDeep(out);
-          return Promise.all(_.map(children, function (child) {
-            return runTask(child, newInput).then(function (childOutput) {
-              return {
-                input: newInput,
-                query: queries[child],
-                output: childOutput
-              }
-            });
-          })).then(function (summaries) {
-            return _.reduce(summaries, function (acc, summary) {
-              acc[summary.query.name] = summary.output;
-              return acc;
-            }, out)
-          });
+          return processChildren(query, children, input, out);
         }));
-      }
-
-      if (_.isPlainObject(output)) {
-        var newInput = _.cloneDeep(input);
-        newInput[query.name] = _.cloneDeep(output);
-        return Promise.all(_.map(children, function (child) {
-          return runTask(child, newInput).then(function (childOutput) {
-            return {
-              input: newInput,
-              query: queries[child],
-              output: childOutput
-            }
-          });
-        })).then(function (summaries) {
-          return _.reduce(summaries, function (acc, summary) {
-            acc[summary.query.name] = summary.output;
-            return acc;
-          }, output)
-        });
+      } else if (_.isPlainObject(output)) {
+        return processChildren(query, children, input, output);
+      } else {
+        return output;
       }
     });
   }
@@ -243,7 +227,8 @@ var Home = {
     var q = {
       'Header': Header.query(),
       'Summary': Summary.query(),
-      'Bananas': [1, 2, 3, 4]
+      'Bananas': [1, 2, 3, 4],
+      'hmm()': null
     };
 
     return JSON.parse(JSON.stringify(q).replace(new RegExp('<user_id>', 'g'), userId));
