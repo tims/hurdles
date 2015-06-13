@@ -75,8 +75,8 @@ function hurdles(handlers) {
       throw new QueryException('No method ' + method + ' for ' + type + ' handler, with query ' + JSON.stringify(query));
     }
 
-    //console.log('handling query type =', type, ', inputs =', inputs, ', query =', query);
     console.log(method + 'ing ' + type + ' with input ' + JSON.stringify(inputs));
+    console.log('handling query type =', type, ', inputs =', inputs, ', query =', query);
     return handlers[type][method](inputs, query).then(function (output) {
       if (_.isPlainObject(query) && !_.isPlainObject(output)) {
         throw new QueryException('Query output mismatch. Expected plain object, got '
@@ -91,11 +91,13 @@ function hurdles(handlers) {
       }
 
       if (_.isArray(output)) {
+        console.log('output is', output);
         output = _.map(output, function (out) {
           return pickFields(out, query[0], type);
         });
+        console.log('output is now', output);
       }
-
+      //console.log('handling query type =', type, ', inputs =', inputs, ', query =', query, ' output = ', output);
       return output;
     });
   };
@@ -120,13 +122,21 @@ function hurdles(handlers) {
       type: type,
       method: method,
       promiseFactory: type ? function (upstream) {
+        console.log('handleQuery(query, type, upstream, method)', query, type, upstream, method);
         return handleQuery(query, type, upstream, method);
       } : function () {
         return Promise.resolve({});
       }
     };
+
     if (_.isArray(query)) {
+      if (query.length > 1) {
+        throw new QueryException('Query definitions should only have one entry in an array. ' + JSON.stringify(query));
+      }
+      console.log('building array subplans', query);
+      //plan.subQueries = [buildQueryPromises(query[0], null, plan)];
       plan.subQueries = _.map(getQueries(query[0]), function (subQuery, subType) {
+        console.log('building sub queries for array', subQuery, subType);
         return buildQueryPromises(subQuery, subType, plan);
       });
     } else if (_.isPlainObject(query)) {
@@ -139,13 +149,20 @@ function hurdles(handlers) {
 
   function runSubPlans(plan, output, _upstream) {
     var upstream = {};
-    if (plan.type) {
+    if (!_.isEmpty(_upstream)) {
+      _.assign(upstream, _.cloneDeep(_upstream));
+    }
+    if (!_.isEmpty(output)) {
+      console.log('output', output);
+
       upstream[plan.type] = _.cloneDeep(output);
-      _.assign(upstream[plan.type], _upstream || {});
+      console.log('upstream', upstream);
     }
 
+    console.log('running sub plans for plan type='  + plan.type + ' query=' + JSON.stringify(plan.query));
+
     return Promise.all(_.map(plan.subQueries, function (subPlan) {
-      //console.log('subplan type', subPlan.type, 'output', output);
+
       if (output[subPlan.type]) {
         return Promise.resolve(output[subPlan.type]);
       } else {
@@ -162,8 +179,12 @@ function hurdles(handlers) {
 
   function runPlan(plan, upstream) {
     return plan.promiseFactory(upstream).then(function (output) {
+      console.log('finished running plan', plan.type, plan.query, output);
       if (_.isArray(output)) {
+        console.log('output is still', output);
         return Promise.all(_.map(output, function (out) {
+          console.log('out is', out);
+          console.log('query is', plan.query);
           return runSubPlans(plan, out, upstream);
         }));
       } else {

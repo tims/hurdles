@@ -12,6 +12,15 @@ var chance = require('chance')();
 var handlers = require('./handlers');
 var hurdles = require('./hurdles')(handlers);
 
+
+var app = express();
+app
+  .use(cors())
+  .use(bodyParser.json())
+  .use(bodyParser.urlencoded({
+    extended: true
+  }));
+
 var always200 = function (req, res) {
   res.send('OK');
 };
@@ -23,14 +32,6 @@ var always400 = function (req, res) {
   }, 0);
 };
 
-var app = express();
-
-app
-  .use(cors())
-  .use(bodyParser.json())
-  .use(bodyParser.urlencoded({
-    extended: true
-  }));
 
 app.get('/api', function (req, res) {
   res.send('I am fake.')
@@ -47,7 +48,14 @@ function handleResponse(promise, res) {
   });
 }
 
+app.post('/', function(req, res) {
+  var query = req.body;
+  console.log('QUERY', query);
+  handleResponse(hurdles.run(query), res);
+});
+
 app.get('/', function (req, res) {
+  console.log('/', JSON.stringify(req.query));
   var query = {};
   if (req.query.q) {
     query = JSON.parse(req.query.q);

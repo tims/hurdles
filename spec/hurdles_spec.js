@@ -4,30 +4,32 @@ var _ = require('lodash');
 describe('hurdles', function () {
   var output;
   var asyncError;
-  var handlerInputs;
   var foo = {a: 1, b: 2};
   var bar = {x: 3, y: 4};
 
-  function handlers(typeToObjectMap) {
-    var handlers = {};
-    _.each(typeToObjectMap, function (v, k) {
-      handlers[k] = function (input) {
-        handlerInputs[k] = input;
-        return Promise.resolve(v);
+  function Handlers() {
+    var self = this;
+    this.handlers = {};
+    this.inputs = {}
+    this.add = function (type, method, obj) {
+      self.handlers[type] = self.handlers[type] || {};
+      self.handlers[type][method] = function (input) {
+        self.inputs[type] = self.inputs[type] || {};
+        self.inputs[type][method] = input;
+        return Promise.resolve(obj);
       };
-    });
-    return handlers;
+      return self;
+    }
   };
 
   beforeEach(function () {
     output = null;
     asyncError = null;
-    handlerInputs = {};
   });
 
 
-  function readQuery(hurdles, q, done) {
-    hurdles.read(q).then(function (o) {
+  function runQuery(hurdles, q, done) {
+    hurdles.run(q).then(function (o) {
       output = o;
       done()
     }).catch(function (e) {
@@ -38,9 +40,10 @@ describe('hurdles', function () {
 
   describe('querying with simple object', function () {
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({foo: foo}));
+      var handlers = new Handlers().add('foo', 'read', foo);
+      var hurdles = hurdlesFactory(handlers.handlers);
       var query = {foo: {a: null, b: null}};
-      readQuery(hurdles, query, done);
+      runQuery(hurdles, query, done);
     });
     it("has same shape and filled values", function () {
       if (asyncError) throw asyncError;
@@ -50,10 +53,10 @@ describe('hurdles', function () {
 
   describe('query with no matching handler', function () {
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({}));
+      var hurdles = hurdlesFactory({});
       var query = {foo: {a: null, b: null}};
 
-      readQuery(hurdles, query, done);
+      runQuery(hurdles, query, done);
     });
 
     it("throws error", function () {
@@ -63,8 +66,9 @@ describe('hurdles', function () {
 
   describe('query for some fields', function () {
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({foo: foo}));
-      readQuery(hurdles, {foo: {a: null}}, done);
+      var handlers = new Handlers().add('foo', 'read', foo);
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {foo: {a: null}}, done);
     });
     it("selects only some fields", function () {
       if (asyncError) throw asyncError;
@@ -84,10 +88,9 @@ describe('hurdles', function () {
       }
     }
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({
-        foo: expected.foo
-      }));
-      readQuery(hurdles, {
+      var handlers = new Handlers().add('foo', 'read', expected.foo);
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -106,9 +109,13 @@ describe('hurdles', function () {
   });
 
   describe('multiple handlers and query with nested shape', function () {
+    var handlers;
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({foo: foo, bar: bar}));
-      readQuery(hurdles, {
+      handlers = new Handlers()
+        .add('foo', 'read', foo)
+        .add('bar', 'read', bar);
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -137,17 +144,58 @@ describe('hurdles', function () {
 
     it("second handler receives first handler's output as input", function () {
       if (asyncError) throw asyncError;
+      expect(handlers.inputs.bar.read).toEqual({foo: foo});
+    });
+  });
+
+  describe('deeply nested query', function () {
+    var handlers;
+    beforeEach(function (done) {
+      handlers = new Handlers()
+        .add('top', 'read', {a: 1})
+        .add('middle', 'read', {b: 2})
+        .add('bottom', 'read', {c: 3});
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {
+        top: {
+          a: null,
+          middle: {
+            b: null,
+            bottom: {
+              c: null
+            }
+          }
+        }
+      }, done);
+    });
+
+    it('output is deeply nested', function () {
+      if (asyncError) throw asyncError;
       var expected = {
-        foo: {
-          a: foo.a,
-          b: foo.b,
-          bar: {
-            x: bar.x,
-            y: bar.y
+        top: {
+          a: 1,
+          middle: {
+            b: 2,
+            bottom: {
+              c: 3
+            }
           }
         }
       };
-      expect(handlerInputs.bar).toEqual({foo: foo});
+      expect(output).toEqual(expected);
+    });
+
+    it("middle handler receives top handler output as input", function () {
+      if (asyncError) throw asyncError;
+      expect({top: {a: 1}}).toEqual(handlers.inputs.middle.read);
+    });
+
+    it("bottom handler receives middle and top handler outputs as input", function () {
+      if (asyncError) throw asyncError;
+      expect({
+        top: {a: 1},
+        middle: {b: 2}
+      }).toEqual(handlers.inputs.bottom.read);
     });
   });
 
@@ -161,8 +209,10 @@ describe('hurdles', function () {
       }
     }
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers(expected));
-      readQuery(hurdles, {
+      handlers = new Handlers()
+        .add('foo', 'read', expected.foo);
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -187,16 +237,13 @@ describe('hurdles', function () {
         b: foo.b,
         bars: [{x: 1, y: 2}, {x: 3, y: 4}]
       }
-    }
+    };
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({
-        foo: {
-          a: foo.a,
-          b: foo.b
-        },
-        bars: [{x: 1, y: 2,}, {x: 3, y: 4}]
-      }));
-      readQuery(hurdles, {
+      handlers = new Handlers()
+        .add('foo', 'read', foo)
+        .add('bars', 'read', [{x: 1, y: 2}, {x: 3, y: 4}]);
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {
         foo: {
           a: null,
           b: null,
@@ -205,6 +252,28 @@ describe('hurdles', function () {
             y: null
           }]
         }
+      }, done);
+    });
+
+    it("fills nested shape using handler", function () {
+      if (asyncError) throw asyncError;
+      expect(expected).toEqual(output);
+    });
+  });
+
+  describe('parallel queries', function () {
+    var expected = {
+      foo: {a: 1},
+      bar: {b: 2}
+    };
+    beforeEach(function (done) {
+      var handlers = new Handlers()
+        .add('foo', 'read', {a: 1})
+        .add('bar', 'read', {b: 2});
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles, {
+        foo: {a: null},
+        bar: {b: null}
       }, done);
     });
 
@@ -214,37 +283,56 @@ describe('hurdles', function () {
     });
   });
 
-  describe('query with nested array that secondary handler fills', function () {
+  describe('parallel queries inside array query should be merged', function () {
     var expected = {
-      foo: {
-        a: foo.a,
-        b: foo.b,
-        bars: [{x: 1, y: 2}, {x: 3, y: 4}]
-      }
-    }
+      things: [{
+        id: 1,
+        foo: {a: 1},
+        bar: {b: 2}
+      }]
+    };
+
     beforeEach(function (done) {
-      var hurdles = hurdlesFactory(handlers({
-        foo: {
-          a: foo.a,
-          b: foo.b
-        },
-        bars: [{x: 1, y: 2,}, {x: 3, y: 4}]
-      }));
-      readQuery(hurdles, {
-        foo: {
-          a: null,
-          b: null,
-          bars: [{
-            x: null,
-            y: null
-          }]
-        }
-      }, done);
+      var handlers = new Handlers()
+        .add('things', 'read', [{id: 1}])
+        .add('foo', 'read', {a: 1})
+        .add('bar', 'read', {b: 2});
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles,
+        {things: [{id: null, foo: {a: null}, bar: {b: null}}]}, done);
     });
 
     it("fills nested shape using handler", function () {
       if (asyncError) throw asyncError;
-      expect(output).toEqual(expected);
+      expect(expected).toEqual(output);
+    });
+  });
+
+
+  describe('something', function () {
+    var expected = {
+      things: [{
+        x: 1,
+        foo: {a: 1}
+      }]
+    };
+    var handlers = new Handlers()
+      .add('things', 'read', [{x: 1}])
+      .add('foo', 'read', {a: 1})
+
+    beforeEach(function (done) {
+      var hurdles = hurdlesFactory(handlers.handlers);
+      runQuery(hurdles,
+        {things: [{x: null, foo: {a: null}}]}, done);
+    });
+
+    it("foo receives input from things", function () {
+      expect(handlers.inputs.foo.read).toEqual({things: {x: 1}});
+    });
+
+    it("fills nested shape using handler", function () {
+      if (asyncError) throw asyncError;
+      expect(expected).toEqual(output);
     });
   });
 });
