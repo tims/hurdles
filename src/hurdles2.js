@@ -57,7 +57,7 @@ function findQueries(nestedQueryDef, pathSoFar) {
       var qs = [];
       if (isQuery(key)) {
         var parsed = parseQueryKey(key);
-        path.push(parsed.name);
+        path.push(key);
         qs = [{
           name: parsed.name,
           queryKey: key,
@@ -98,13 +98,126 @@ function parseNestedQuery(queryKey, nestedQuery) {
   }
 }
 
+function runQuery(query, input) {
+
+}
+
+var handlers = {
+  'root': function(query, input) {
+    return Promise.resolve({});
+  },
+  'posts': function(query, input) {
+    console.log('posts received input', input);
+    return Promise.resolve(query.shape);
+  },
+  'user': function(query, input) {
+    console.log('user received input', input);
+    return Promise.resolve(query.shape);
+  },
+  'cogs': function(query, input) {
+    console.log('cogs received input', input);
+    return Promise.resolve(query.shape);
+  },
+  'x': function(query, input) {
+    console.log('x received input', input);
+    return Promise.resolve(query.shape);
+  }
+};
+
+function getHandler(name) {
+  return handlers[name] ? handlers[name] : function(query, input) {
+    return new Promise(function(resolve, reject) {
+      if (query.queryKey) {
+        console.log('rejecting', query.queryKey);
+        reject(new Error('Query requires handler, but no handler found named ' + name));
+      } else {
+        console.log('resolving', query, query.queryKey);
+        resolve(query.shape);
+      }
+    });
+  }
+}
+
+function runQueries(queries) {
+  var runningTasks = {};
+
+  var sortedQueries = _.sortBy(queries, 'path');
+
+  var tree = {};
+  var queries = {}
+
+  _.each(sortedQueries, function (q) {
+    var parent = q.path.length <= 1 ? 'root' : _.take(q.path, q.path.length - 1).join('.');
+    var child = q.path.join('.');
+    queries[child] = q;
+    tree[parent] = tree[parent] || [];
+    tree[parent].push(child);
+  });
+
+  function runTask(key, input) {
+    var query = key === 'root' ? {name: 'root'} : queries[key];
+    console.log('key', key);
+    console.log('query.name', query.name);
+    console.log('query.path', query.path);
+    console.log('query.queryKey', query.queryKey);
+
+    var children = tree[key];
+    var handler = getHandler(query.name);
+    return handler(query, input).then(function (output) {
+      //if (_.isArray(output)) {
+      //  _.each(output, function (out) {
+      //    var newInput = _.cloneDeep(input);
+      //    newInput[query.name] = out;
+      //    runTask(child, newInput)
+      //  });
+      //}
+
+
+
+      if (_.isPlainObject(output)) {
+        var newInput = _.cloneDeep(input);
+        newInput[query.name] = _.cloneDeep(output);
+        return Promise.all(_.map(children, function (child) {
+          return runTask(child, newInput).then(function (childOutput) {
+            return {
+              input: newInput,
+              query: queries[child],
+              output: childOutput
+            }
+          });
+        })).then(function (summaries) {
+          return _.reduce(summaries, function (acc, summary) {
+            acc[summary.query.name] = summary.output;
+            return acc;
+          }, output)
+        });
+      }
+    });
+  }
+
+  console.log(JSON.stringify(tree));
+
+  console.log(["=========================="]);
+  runTask('root', {}).then(function (output) {
+    console.log(JSON.stringify(output));
+  }).catch(function(e) {
+    console.error('error', e.stack);
+  });
+
+  //_.each(queries, function(query) {
+  //
+  //});
+}
+
 var Home = {
-  query: function () {
-    return {
+  query: function (userId) {
+    var q = {
       'Header': Header.query(),
       'Summary': Summary.query(),
       'Bananas': [1, 2, 3, 4]
     };
+
+    return JSON.parse(JSON.stringify(q).replace(new RegExp('<user_id>', 'g'), userId));
   }
 };
 
@@ -126,7 +239,7 @@ var Summary = {
   query: function () {
     return {
       'posts(user_id:<user_id>,limit:10)[]': Post.query()
-    }
+    };
   }
 };
 
@@ -169,9 +282,11 @@ var rootQuery = {
   }
 };
 
-var homeQuery = Home.query();
-console.log(JSON.stringify(homeQuery));
-console.log(JSON.stringify(parseNestedQuery('root', homeQuery)));
+var homeQuery = Home.query(1);
+//console.log(JSON.stringify(homeQuery));
+//console.log(JSON.stringify(parseNestedQuery('root', homeQuery)));
 
-console.log('{"============================": "============================"}');
-console.log(JSON.stringify(findQueries(homeQuery)));
+var queries = findQueries(homeQuery);
+//console.log(JSON.stringify(queries));
+
+runQueries(queries);
