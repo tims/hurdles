@@ -1,4 +1,4 @@
-var hurdlesFactory = require('../src/hurdles2');
+var hurdlesFactory = require('../src/hurdles');
 var _ = require('lodash');
 
 describe('hurdles', function () {

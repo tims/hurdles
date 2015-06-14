@@ -63,4 +63,9 @@ app.get('/', function (req, res) {
   handleResponse(hurdles.run(query), res);
 });
 
-module.exports = http.createServer(app);
+var server = http.createServer(app);
+
+server.listen(3000, function () {
+  console.log('API listening on port %d', server.address().port);
+});
+

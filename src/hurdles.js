@@ -9,7 +9,7 @@ function getShape(queryDef) {
     return queryDef;
   }
 
-  var shape = {}
+  var shape = {};
   _.each(queryDef, function (value, key) {
     if (isQuery(key)) { // TODO: And is not a mutation. We should not allow a query to fill it's children if they are mutations.
       shape[parseQueryKey(key).name] = getShape(value);

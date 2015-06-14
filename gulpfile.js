@@ -7,11 +7,17 @@ gulp.task('default', ['serve']);
 gulp.task('serve', function () {
   nodemon({
     watch: ['src/**/*.js'],
-    script: 'src/index.js'
+    script: 'src/example.js'
   });
 });
 
 gulp.task('test', function() {
   return gulp.src('spec/*_spec.js')
     .pipe(jasmine());
+});
+
+gulp.task('tdd', function() {
+  return gulp.watch(['src/**/*.js', 'spec/**/*.js'], function() {
+    return gulp.run('test');
+  });
 });
