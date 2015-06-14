@@ -7,7 +7,6 @@ var fs = require('fs');
 var bodyParser = require('body-parser');
 var moment = require('moment');
 var _ = require('lodash');
-var chance = require('chance')();
 
 var handlers = require('./handlers');
 var hurdles = require('./hurdles')(handlers);
