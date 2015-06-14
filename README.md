@@ -2,5 +2,5 @@ I am interested in Facebook's Relay project, which is a thing for fetching data 
 
 At the time of writing this, they have posted some slides and given some talks but haven't released any code. 
 
-I'm messing around trying to implement that basic idea without getting fancy. Hurdles is as a pun as per tradition.
+I'm messing around trying to implement that basic idea without getting fancy.
 
