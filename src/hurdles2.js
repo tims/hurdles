@@ -1,6 +1,4 @@
-var _ = require('lodash');
-
-var queryCache = {};
+  var _ = require('lodash');
 
 function isQuery(key) {
   return key.match(/\w+\(.*\)/)
@@ -51,7 +49,7 @@ function findQueries(nestedQueryDef, pathSoFar) {
     pathSoFar = [];
   }
 
-  var queries = []
+  var queries = [];
   if (_.isArray(nestedQueryDef)) {
     // Should we allow this?
   } else {
@@ -107,7 +105,7 @@ function runQuery(query, input) {
 
 }
 
-var handlers = {
+var _handlers = {
   'root': function (query, input) {
     return Promise.resolve({});
   },
@@ -134,12 +132,13 @@ var handlers = {
 };
 
 function getHandler(name) {
-  return handlers[name] ? handlers[name] : function (query, input) {
+  return _handlers[name] ? _handlers[name] : function (query, input) {
     return new Promise(function (resolve, reject) {
       if (query.queryKey) {
         //console.log('rejecting', query.queryKey);
         reject(new Error('Query requires handler, but no handler found named ' + name));
       } else {
+        //console.log('resolving query shape', query.shape);
         //console.log('resolving', query, query.queryKey);
         resolve(query.shape);
       }
@@ -148,8 +147,6 @@ function getHandler(name) {
 }
 
 function runQueries(queries) {
-  var runningTasks = {};
-
   var sortedQueries = _.sortBy(queries, 'path');
 
   var tree = {};
@@ -184,7 +181,8 @@ function runQueries(queries) {
 
 
   function runTask(key, input) {
-    var query = key === 'root' ? {name: 'root'} : queries[key];
+    var query = key === 'root' ? {name: 'root', shape: {}} : queries[key];
+
     //console.log('key', key);
     //console.log('query.name', query.name);
     //console.log('query.path', query.path);
@@ -194,6 +192,7 @@ function runQueries(queries) {
     var handler = getHandler(query.name);
     return handler(query, input).then(function (output) {
       if (_.isArray(output)) {
+        //console.log('runTask, output array, now running children');
         return Promise.all(_.map(output, function (out) {
           if (!_.isPlainObject(out)) {
             return out;
@@ -208,18 +207,7 @@ function runQueries(queries) {
     });
   }
 
-  console.log(JSON.stringify(tree));
-
-  //console.log(["=========================="]);
-  runTask('root', {}).then(function (output) {
-    console.log(JSON.stringify(output));
-  }).catch(function (e) {
-    console.error('error', e.stack);
-  });
-
-  //_.each(queries, function(query) {
-  //
-  //});
+  return runTask('root', {});
 }
 
 var Home = {
@@ -296,11 +284,20 @@ var rootQuery = {
   }
 };
 
-var homeQuery = Home.query(1);
-console.log(JSON.stringify(homeQuery));
-//console.log(JSON.stringify(parseNestedQuery('root', homeQuery)));
+module.exports = function (handlers) {
+  _handlers = handlers;
+  return {
+    _findQueries: findQueries,
 
-var queries = findQueries(homeQuery);
-console.log(JSON.stringify(queries));
+    run: function (query) {
+      console.log('running query', query);
+      return runQueries(findQueries(query));
+    }
+  }
+};
 
-runQueries(queries);
+var queries = findQueries(Home.query(1));
+runQueries(queries).then(function(o) {
+  console.log('QUERIES...', JSON.stringify(queries));
+  console.log('OUTPUT...', JSON.stringify(o));
+});
