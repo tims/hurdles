@@ -5,12 +5,19 @@ var http = require('http');
 var cors = require('cors');
 var fs = require('fs');
 var bodyParser = require('body-parser');
-var moment = require('moment');
 var _ = require('lodash');
 
-var handlers = require('./handlers');
-var hurdles = require('./hurdles')(handlers);
-
+var hurdles = require('./hurdles')({
+  foo: function (query, input) {
+    return new Promise.resolve({a: 1});
+  },
+  bar: function (query, input) {
+    return new Promise.resolve({a: 1});
+  },
+  echoQueryParams: function (query, input) {
+    return new Promise.resolve(query.queryParams);
+  }
+});
 
 var app = express();
 app
@@ -19,22 +26,6 @@ app
   .use(bodyParser.urlencoded({
     extended: true
   }));
-
-var always200 = function (req, res) {
-  res.send('OK');
-};
-
-var always400 = function (req, res) {
-  setTimeout(function () {
-    res.status(400);
-    res.send({message: 'Not OK!'});
-  }, 0);
-};
-
-
-app.get('/api', function (req, res) {
-  res.send('I am fake.')
-});
 
 function handleResponse(promise, res) {
   promise.then(function (output) {
@@ -47,7 +38,7 @@ function handleResponse(promise, res) {
   });
 }
 
-app.post('/', function(req, res) {
+app.post('/', function (req, res) {
   var query = req.body;
   console.log('QUERY', query);
   handleResponse(hurdles.run(query), res);
@@ -64,7 +55,6 @@ app.get('/', function (req, res) {
 });
 
 var server = http.createServer(app);
-
 server.listen(3000, function () {
   console.log('API listening on port %d', server.address().port);
 });
