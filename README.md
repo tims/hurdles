@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/tims/hurdles.svg)](https://travis-ci.org/tims/hurdles)
+
 I am interested in Facebook's Relay project, which is a thing for fetching data from a React app with composable queries.
 
 At the time of writing this, they have posted some slides and given some talks but haven't released any code. 
