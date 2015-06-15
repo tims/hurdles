@@ -102,31 +102,7 @@ function findQueries(nestedQueryDef, pathSoFar) {
   return queries;
 }
 
-var _handlers = {
-  'root': function (query, input) {
-    return Promise.resolve({});
-  },
-  'posts': function (query, input) {
-    //console.log('posts received input', input);
-    return Promise.resolve([{id: 1, text: 'iamtext'}, {id: 2, text: 'ibetext'}]);
-  },
-  'user': function (query, input) {
-    //console.log('user received input', input);
-    return Promise.resolve(query.shape);
-  },
-  'cogs': function (query, input) {
-    //console.log('cogs received input', input);
-    return Promise.resolve({name: 'iamcog'});
-  },
-  'x': function (query, input) {
-    //console.log('x received input', input);
-    return Promise.resolve(query.shape);
-  },
-  'hmm': function (query, input) {
-    //console.log('x received input', input);
-    return Promise.resolve(123);
-  }
-};
+var _handlers = {};
 
 function getHandler(name) {
   return _handlers[name] ? _handlers[name] : function (query, input) {
