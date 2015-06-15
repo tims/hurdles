@@ -1,7 +1,15 @@
-  var _ = require('lodash');
+var _ = require('lodash');
+
+function matchArrayQuery(key) {
+  return key.match(/(\w+)\[((\w+:[<\w>]+?)?(,\w+:[<\w>]+)*)\]/);
+}
+
+function matchObjectQuery(key) {
+  return key.match(/(\w+)\(((\w+:[<\w>]+?)?(,\w+:[<\w>]+)*)\)/);
+}
 
 function isQuery(key) {
-  return key.match(/\w+\(.*\)/)
+  return key.match(/\w+(\(.*\)|\[.*\])/);
 }
 
 function getShape(queryDef) {
@@ -11,8 +19,17 @@ function getShape(queryDef) {
 
   var shape = {};
   _.each(queryDef, function (value, key) {
+    console.log(key);
     if (isQuery(key)) { // TODO: And is not a mutation. We should not allow a query to fill it's children if they are mutations.
-      shape[parseQueryKey(key).name] = getShape(value);
+      console.log(key, 'is query');
+      var parsedQueryKey = parseQueryKey(key);
+      console.log(queryDef, parsedQueryKey)
+      if (_.isArray(parsedQueryKey.returnType)) {
+        console.log('i am array query!!!!');
+        shape[parsedQueryKey.name] = [getShape(value)];
+      } else {
+        shape[parsedQueryKey.name] = getShape(value);
+      }
     } else if (_.isPlainObject(value)) {
       shape[key] = getShape(value);
     } else {
@@ -29,10 +46,16 @@ function parseQueryKey(queryKey) {
 
   var parsed = {
     name: queryKey,
-    queryParams: {}
+    queryParams: {},
+    returnType: {}
   };
 
-  var match = queryKey.match(/(\w+)\(((\w+:[<\w>]+?)?(,\w+:[<\w>]+)*)\)/);
+  var match = null;
+  if (match = matchObjectQuery(queryKey)) {
+    parsed.returnType = {}
+  } else if (match = matchArrayQuery(queryKey)) {
+    parsed.returnType = []
+  }
   parsed.name = match[1];
   if (!_.isEmpty(match[2])) {
     _.each(match[2].split(','), function (arg) {
@@ -89,7 +112,7 @@ var _handlers = {
   },
   'posts': function (query, input) {
     //console.log('posts received input', input);
-    return Promise.resolve([{id: 1}, {id: 2}]);
+    return Promise.resolve([{id: 1, text: 'iamtext'}, {id: 2,text:'ibetext'}]);
   },
   'user': function (query, input) {
     //console.log('user received input', input);
@@ -97,7 +120,7 @@ var _handlers = {
   },
   'cogs': function (query, input) {
     //console.log('cogs received input', input);
-    return Promise.resolve(query.shape);
+    return Promise.resolve({name:'iamcog'});
   },
   'x': function (query, input) {
     //console.log('x received input', input);
@@ -188,13 +211,36 @@ function runQueries(queries) {
   return runTask('root', {});
 }
 
+function matchShape(shape, output) {
+  var outputShape = _.cloneDeep(shape);
+
+  if (_.isPlainObject(output)) {
+    if (outputShape === null) {
+      outputShape = output;
+    } else {
+      _.each(output, function(value, key) {
+        if (!outputShape) {
+          console.log('cannot set key out output shape', outputShape);
+          console.log('cannot set key out output shape', key);
+          console.log('cannot set key out output shape', output);
+        }
+        outputShape[key] = matchShape(shape[key], value);
+      });
+      outputShape = _.pick(outputShape, _.keys(shape));
+    }
+  } else {
+    outputShape = output;
+  }
+  return outputShape;
+}
+
 var Home = {
   query: function (userId) {
     var q = {
-      'Header': Header.query(),
+      //'Header': Header.query(),
       'Summary': Summary.query(),
-      'Bananas': [1, 2, 3, 4],
-      'hmm()': null
+      //'Bananas': [1, 2, 3, 4],
+      //'hmm()': null
     };
 
     return JSON.parse(JSON.stringify(q).replace(new RegExp('<user_id>', 'g'), userId));
@@ -218,7 +264,8 @@ var Header = {
 var Summary = {
   query: function () {
     return {
-      'posts(user_id:<user_id>,limit:10)[]': Post.query()
+      'posts(user_id:<user_id>,limit:10)[]': Post.query(),
+      baz: 1
     };
   }
 };
@@ -265,17 +312,29 @@ var rootQuery = {
 module.exports = function (handlers) {
   _handlers = handlers;
   return {
+    _getShape: getShape,
     _findQueries: findQueries,
 
     run: function (query) {
       console.log('running query', query);
-      return runQueries(findQueries(query));
+      return runQueries(findQueries(query)).then(function(output) {
+        var shape = getShape(query);
+        console.log('shape', shape);
+        return matchShape(shape, output);
+      }).catch(function(e){
+        console.error(e.stack);
+        throw e;
+      });
     }
   }
 };
 
-var queries = findQueries(Home.query(1));
-runQueries(queries).then(function(o) {
-  console.log('QUERIES...', JSON.stringify(queries));
-  console.log('OUTPUT...', JSON.stringify(o));
+var queryDef = {a:1};
+runQueries(findQueries(queryDef)).then(function (output) {
+  var shape = getShape(queryDef);
+  var outputShape = matchShape(shape, output);
+  console.log(JSON.stringify(shape));
+  console.log(JSON.stringify(output));
+  console.log(JSON.stringify(outputShape));
 });
+

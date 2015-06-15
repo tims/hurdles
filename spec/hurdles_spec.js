@@ -10,16 +10,65 @@ describe('hurdles', function () {
     asyncError = null;
   });
 
-  function runQuery(hurdles, q, done) {
-    hurdles.run(q).then(function (o) {
-      output = o;
-      done()
-    }).catch(function (e) {
-      asyncError = e;
-      console.error(e.stack);
-      done();
+  describe('getShape', function () {
+    it('should leave values alone', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({foo: 1})).toEqual({foo: 1});
+      expect(hurdles._getShape({foo: null})).toEqual({foo: null});
+      expect(hurdles._getShape({foo: 'test'})).toEqual({foo: 'test'});
     });
-  };
+
+    it('should leave arrays of values alone', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape([1, 2, 3])).toEqual([1, 2, 3]);
+    });
+
+    it('should reduce calls to their name', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({'a()': null})).toEqual({a: null});
+    });
+
+    it('should reduce nested calls to their nested names', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({'a()': {'b()': null}})).toEqual({a: {b: null}});
+    });
+
+    it('array values should be treated as constants', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({
+        a: [{'thisshouldnotchange()': null}]
+      })).toEqual({
+        a: [{'thisshouldnotchange()': null}]
+      });
+    });
+
+    it('should return array for array queries', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({
+        'a[id:1]': {a: null}
+      })).toEqual({
+        a: [{a: null}]
+      });
+    });
+
+    it('should strip query parameters from queries', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({
+        'a(id:1)': {a: null}
+      })).toEqual({
+        a: {a: null}
+      });
+    });
+
+    it('should strip query parameters from array queries', function () {
+      var hurdles = hurdlesFactory({});
+      expect(hurdles._getShape({
+        'a[id:1]': {a: null}
+      })).toEqual({
+        a: [{a: null}]
+      });
+    });
+  });
 
   describe('findQueries', function () {
     it('finds most basic possible task', function () {
@@ -101,6 +150,9 @@ describe('hurdles', function () {
         recordsInput: function (query, input) {
           return Promise.resolve({input: input});
         },
+        recordsShape: function (query, input) {
+          return Promise.resolve({input: query.shape});
+        },
         array: function () {
           return Promise.resolve([1, 2, 3]);
         },
@@ -108,7 +160,7 @@ describe('hurdles', function () {
           return Promise.resolve([{x: 1}, {x: 2}, {x: 3}]);
         },
         user: function () {
-          return Promise.resolve({id:1, name:'Tim'});
+          return Promise.resolve({id: 1, name: 'Tim'});
         }
       });
     });
@@ -195,15 +247,15 @@ describe('hurdles', function () {
     it('children get input from each element of parent\'s output array', function (done) {
       var queryDef = {
         'arrayOfObjects()': {
-          'recordsInput()': {input:null}
+          'recordsInput()': {input: null}
         }
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
           arrayOfObjects: [
-            {x: 1, recordsInput: {input: {arrayOfObjects: {x:1}, root: {}}}},
-            {x: 2, recordsInput: {input: {arrayOfObjects: {x:2}, root: {}}}},
-            {x: 3, recordsInput: {input: {arrayOfObjects: {x:3}, root: {}}}}
+            {x: 1, recordsInput: {input: {arrayOfObjects: {x: 1}, root: {}}}},
+            {x: 2, recordsInput: {input: {arrayOfObjects: {x: 2}, root: {}}}},
+            {x: 3, recordsInput: {input: {arrayOfObjects: {x: 3}, root: {}}}}
           ]
         }).toEqual(output);
       }).catch(fail).then(done);
@@ -214,19 +266,19 @@ describe('hurdles', function () {
         'bla': 1
       };
       hurdles.run(queryDef).then(function (output) {
-        expect({bla:1}).toEqual(output);
+        expect({bla: 1}).toEqual(output);
       }).catch(fail).then(done);
     });
 
     it('can define constants within a query', function (done) {
       var queryDef = {
         'foo()': {
-          a:null,
-          x:1
+          a: null,
+          x: 1
         }
       };
       hurdles.run(queryDef).then(function (output) {
-        expect({foo: {a:1,x:1}}).toEqual(output);
+        expect({foo: {a: 1, x: 1}}).toEqual(output);
       }).catch(fail).then(done);
     });
 
@@ -237,7 +289,7 @@ describe('hurdles', function () {
         }
       };
       hurdles.run(queryDef).then(function (output) {
-        expect({user: {name:'Tim'}}).toEqual(output);
+        expect({user: {name: 'Tim'}}).toEqual(output);
       }).catch(fail).then(done);
     });
 
@@ -261,7 +313,25 @@ describe('hurdles', function () {
         }
       };
       hurdles.run(queryDef).then(function (output) {
-        expect({foo: {a:1}}).toEqual(output);
+        expect({foo: {a: 1}}).toEqual(output);
+      }).catch(fail).then(done);
+    });
+
+    it('should include constants from shape within an array query', function (done) {
+      var queryDef = {
+        'arrayOfObjects()[]': {
+          x: null,
+          y: 1
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          arrayOfObjects: [
+            {x: 1, y: 1},
+            {x: 2, y: 1},
+            {x: 3, y: 1}
+          ]
+        }).toEqual(output);
       }).catch(fail).then(done);
     });
   });
