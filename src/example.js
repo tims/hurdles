@@ -9,13 +9,17 @@ var _ = require('lodash');
 
 var hurdles = require('./hurdles')({
   foo: function (query, input) {
-    return new Promise.resolve({a: 1});
+    return Promise.resolve({a: 1});
   },
   bar: function (query, input) {
-    return new Promise.resolve({a: 1});
+    return Promise.resolve({b: 2});
   },
-  echoQueryParams: function (query, input) {
-    return new Promise.resolve(query.queryParams);
+  user: function (query, input) {
+    if (query.queryParams.id === 1) {
+      return Promise.resolve({id: 1, name: 'Tim'})
+    } else {
+      throw new Error('User not found');
+    }
   }
 });
 
