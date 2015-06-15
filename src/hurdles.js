@@ -1,5 +1,9 @@
 var _ = require('lodash');
 
+var _options = {};
+var _handlers = {};
+var _promiseCache = {};
+
 function matchArrayQuery(key) {
   return key.match(/(\w+)\[((\w+:[<\w>]+?)?(,\w+:[<\w>]+)*)\]/);
 }
@@ -102,21 +106,25 @@ function findQueries(nestedQueryDef, pathSoFar) {
   return queries;
 }
 
-var _handlers = {};
-
 function getHandler(name) {
   return _handlers[name] ? _handlers[name] : function (query, input) {
     return new Promise(function (resolve, reject) {
       if (query.queryKey) {
-        //console.log('rejecting', query.queryKey);
         reject(new Error('Query requires handler, but no handler found named ' + name));
       } else {
-        //console.log('resolving query shape', query.shape);
-        //console.log('resolving', query, query.queryKey);
         resolve(query.shape);
       }
     });
   }
+}
+
+function handleQuery(query, input) {
+  if (query.queryKey && _options.cache) {
+    var cacheKey = query.path.join('.');
+    _promiseCache[cacheKey] = _promiseCache[cacheKey] || getHandler(query.name)(query, input);
+    return _promiseCache[cacheKey];
+  }
+  return getHandler(query.name)(query, input);
 }
 
 function runQueries(queries) {
@@ -133,11 +141,11 @@ function runQueries(queries) {
     tree[parent].push(child);
   });
 
-  function processChildren(query, children, input, output) {
+  function processChildren(query, children, input, output, index) {
     var newInput = _.cloneDeep(input);
     newInput[query.name] = _.cloneDeep(output);
     return Promise.all(_.map(children, function (child) {
-      return runTask(child, newInput).then(function (childOutput) {
+      return runTask(child, newInput, index).then(function (childOutput) {
         return {
           input: newInput,
           query: queries[child],
@@ -153,24 +161,21 @@ function runQueries(queries) {
   }
 
 
-  function runTask(key, input) {
+  function runTask(key, input, index) {
     var query = key === 'root' ? {name: 'root', shape: {}} : queries[key];
-
-    //console.log('key', key);
-    //console.log('query.name', query.name);
-    //console.log('query.path', query.path);
-    //console.log('query.queryKey', query.queryKey);
-
+    if (index !== undefined) {
+      query = _.cloneDeep(query);
+      query.path = _.take(query.path, query.path.length - 1).concat([index, _.takeRight(query.path, 1)]);
+    }
     var children = tree[key];
-    var handler = getHandler(query.name);
-    return handler(query, input).then(function (output) {
+    var promise = handleQuery(query, input);
+    return promise.then(function (output) {
       if (_.isArray(output)) {
-        //console.log('runTask, output array, now running children');
-        return Promise.all(_.map(output, function (out) {
+        return Promise.all(_.map(output, function (out, index) {
           if (!_.isPlainObject(out)) {
             return out;
           }
-          return processChildren(query, children, input, out);
+          return processChildren(query, children, input, out, index);
         }));
       } else if (_.isPlainObject(output)) {
         return processChildren(query, children, input, output);
@@ -223,8 +228,10 @@ function matchShape(shape, output) {
   return outputShape;
 }
 
-module.exports = function (handlers) {
+module.exports = function (handlers, options) {
   _handlers = handlers;
+  _promiseCache = {};
+  _options = _.assign({cache: true}, options || {});
   return {
     _getShape: getShape,
     _findQueries: findQueries,

@@ -1,5 +1,5 @@
 /* jslint node: true */
-/* global describe, it, expect, require */
+/* global require, describe, it, expect, beforeEach */
 
 "use strict";
 
@@ -378,6 +378,164 @@ describe('hurdles', function () {
             }
           ]
         }).toEqual(output);
+      }).catch(fail).then(done);
+    });
+  });
+
+  describe('handlers', function () {
+    var hurdles;
+    var handlers;
+
+    function Handler(obj) {
+      this.count = 0;
+      var self = this;
+      this.handler = function () {
+        self.count += 1;
+        if (_.isFunction(obj)) {
+          return Promise.resolve(obj(self.count));
+        }
+        return Promise.resolve(obj);
+      };
+      return this;
+    }
+
+
+    beforeEach(function () {
+      handlers = {
+        foo: new Handler({x: 1}),
+        bar: new Handler({y: 2}),
+        counter: new Handler(function (count) {
+          return {count: count}
+        })
+      };
+      hurdles = hurdlesFactory({
+        foo: handlers.foo.handler,
+        bar: handlers.bar.handler,
+        counter: handlers.counter.handler
+      });
+    });
+
+    it('should execute once when called once', function (done) {
+      var queryDef = {
+        'foo()': {
+          x: null,
+          'bar()': {
+            y: null
+          }
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          foo: {
+            x: 1,
+            bar: {
+              y: 2
+            }
+          }
+        }).toEqual(output);
+        expect(handlers.foo.count).toEqual(1);
+        expect(handlers.bar.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
+
+    it('should execute twice when called twice with different input', function (done) {
+      var queryDef = {
+        baz1: {'counter(id:1)': {count: null}},
+        baz2: {'counter(id:2)': {count: null}}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          baz1: {counter: {count: 1}},
+          baz2: {counter: {count: 2}}
+        }).toEqual(output);
+        expect(handlers.counter.count).toEqual(2);
+      }).catch(fail).then(done);
+    });
+
+    it('should execute twice when called twice with the same input but different paths', function (done) {
+      var queryDef = {
+        baz1: {'counter(id:1)': {count: null}},
+        baz2: {'counter(id:1)': {count: null}}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          baz1: {counter: {count: 1}},
+          baz2: {counter: {count: 2}}
+        }).toEqual(output);
+        expect(handlers.counter.count).toEqual(2);
+      }).catch(fail).then(done);
+    });
+
+    it('should execute once when same query is run twice', function (done) {
+      var queryDef = {
+        'counter(id:1)': {count: null}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          counter: {count: 1}
+        }).toEqual(output);
+        expect(handlers.counter.count).toEqual(1);
+      }).then(function () {
+        return hurdles.run(queryDef)
+      }).then(function (output) {
+        expect({
+          counter: {count: 1}
+        }).toEqual(output);
+        expect(handlers.counter.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
+
+  });
+
+  describe('handlers with caching disabled', function() {
+    var hurdles;
+    var handlers;
+
+    function Handler(obj) {
+      this.count = 0;
+      var self = this;
+      this.handler = function () {
+        self.count += 1;
+        if (_.isFunction(obj)) {
+          return Promise.resolve(obj(self.count));
+        }
+        return Promise.resolve(obj);
+      };
+      return this;
+    }
+
+
+    beforeEach(function () {
+      handlers = {
+        foo: new Handler({x: 1}),
+        bar: new Handler({y: 2}),
+        counter: new Handler(function (count) {
+          return {count: count}
+        })
+      };
+      hurdles = hurdlesFactory({
+        foo: handlers.foo.handler,
+        bar: handlers.bar.handler,
+        counter: handlers.counter.handler
+      }, {cache: false});
+    });
+
+    it('should execute twice when same query is run twice with caching disabled', function (done) {
+      var queryDef = {
+        'counter(id:1)': {count: null}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          counter: {count: 1}
+        }).toEqual(output);
+        expect(handlers.counter.count).toEqual(1);
+      }).then(function () {
+        return hurdles.run(queryDef)
+      }).then(function (output) {
+        expect({
+          counter: {count: 2}
+        }).toEqual(output);
+        expect(handlers.counter.count).toEqual(2);
       }).catch(fail).then(done);
     });
   });
