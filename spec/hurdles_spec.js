@@ -265,6 +265,4 @@ describe('hurdles', function () {
       }).catch(fail).then(done);
     });
   });
-
-
 });

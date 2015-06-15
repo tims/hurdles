@@ -83,28 +83,6 @@ function findQueries(nestedQueryDef, pathSoFar) {
   return queries;
 }
 
-//
-//function parseNestedQuery(queryKey, nestedQuery) {
-//  var fields = _.filter(_.keys(nestedQuery), function (key) {
-//    return !isQuery(key, nestedQuery[key]);
-//  });
-//  var children = _.map(_.filter(_.keys(nestedQuery), function (key) {
-//    return isQuery(key, nestedQuery[key]);
-//  }), function (childKey) {
-//    return parseNestedQuery(childKey, nestedQuery[childKey]);
-//  });
-//  return {
-//    action: 'get',
-//    name: queryKey,
-//    fields: fields,
-//    children: children
-//  }
-//}
-
-function runQuery(query, input) {
-
-}
-
 var _handlers = {
   'root': function (query, input) {
     return Promise.resolve({});
