@@ -24,5 +24,6 @@
       "name": "tims",
       "email": "tim@saltcog.com"
     }
-  ]
+  ],
+  "engines" : { "node" : ">=0.11" }
 }
