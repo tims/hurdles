@@ -1,3 +1,8 @@
+/* jslint node: true */
+/* global describe, it, expect, require */
+
+"use strict";
+
 var hurdlesFactory = require('../src/hurdles');
 var _ = require('lodash');
 
@@ -220,7 +225,7 @@ describe('hurdles', function () {
 
     it('handler can return array', function (done) {
       var queryDef = {
-        'array()': null
+        'array[]': null
       };
       hurdles.run(queryDef).then(function (output) {
         expect({array: [1, 2, 3]}).toEqual(output);
@@ -229,16 +234,16 @@ describe('hurdles', function () {
 
     it('children get applied to each element of parent\'s output array', function (done) {
       var queryDef = {
-        'arrayOfObjects()': {
+        'arrayOfObjects[]': {
           'foo()': {a: null}
         }
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
           arrayOfObjects: [
-            {x: 1, foo: {a: 1}},
-            {x: 2, foo: {a: 1}},
-            {x: 3, foo: {a: 1}}
+            {foo: {a: 1}},
+            {foo: {a: 1}},
+            {foo: {a: 1}}
           ]
         }).toEqual(output);
       }).catch(fail).then(done);
@@ -246,16 +251,16 @@ describe('hurdles', function () {
 
     it('children get input from each element of parent\'s output array', function (done) {
       var queryDef = {
-        'arrayOfObjects()': {
+        'arrayOfObjects[]': {
           'recordsInput()': {input: null}
         }
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
           arrayOfObjects: [
-            {x: 1, recordsInput: {input: {arrayOfObjects: {x: 1}, root: {}}}},
-            {x: 2, recordsInput: {input: {arrayOfObjects: {x: 2}, root: {}}}},
-            {x: 3, recordsInput: {input: {arrayOfObjects: {x: 3}, root: {}}}}
+            {recordsInput: {input: {arrayOfObjects: {x: 1}, root: {}}}},
+            {recordsInput: {input: {arrayOfObjects: {x: 2}, root: {}}}},
+            {recordsInput: {input: {arrayOfObjects: {x: 3}, root: {}}}}
           ]
         }).toEqual(output);
       }).catch(fail).then(done);
@@ -298,12 +303,14 @@ describe('hurdles', function () {
         'user()': {
           id: null,
           name: null,
-          dob: null
+          dateOfBirth: null
         }
       };
       hurdles.run(queryDef).then(function (output) {
         fail('expected rejection because dateOfBirth isn\'t available');
-      }).catch().then(done);
+      }).catch(function (e) {
+        expect(e.message).toEqual(jasmine.stringMatching('does not contain expected key dateOfBirth'));
+      }).then(done);
     });
 
     it('should override shape constants with output', function (done) {
@@ -319,7 +326,7 @@ describe('hurdles', function () {
 
     it('should include constants from shape within an array query', function (done) {
       var queryDef = {
-        'arrayOfObjects()[]': {
+        'arrayOfObjects[]': {
           x: null,
           y: 1
         }
@@ -330,6 +337,45 @@ describe('hurdles', function () {
             {x: 1, y: 1},
             {x: 2, y: 1},
             {x: 3, y: 1}
+          ]
+        }).toEqual(output);
+      }).catch(fail).then(done);
+    });
+
+    it('should include constants from nested query within array query', function (done) {
+      var queryDef = {
+        'arrayOfObjects[]': {
+          x: null,
+          'foo()': {
+            a: null,
+            bananas: 123
+          }
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          arrayOfObjects: [
+            {
+              x: 1,
+              foo: {
+                a: 1,
+                bananas: 123
+              }
+            },
+            {
+              x: 2,
+              foo: {
+                a: 1,
+                bananas: 123
+              }
+            },
+            {
+              x: 3,
+              foo: {
+                a: 1,
+                bananas: 123
+              }
+            }
           ]
         }).toEqual(output);
       }).catch(fail).then(done);

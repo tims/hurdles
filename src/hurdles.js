@@ -19,13 +19,9 @@ function getShape(queryDef) {
 
   var shape = {};
   _.each(queryDef, function (value, key) {
-    console.log(key);
     if (isQuery(key)) { // TODO: And is not a mutation. We should not allow a query to fill it's children if they are mutations.
-      console.log(key, 'is query');
       var parsedQueryKey = parseQueryKey(key);
-      console.log(queryDef, parsedQueryKey)
       if (_.isArray(parsedQueryKey.returnType)) {
-        console.log('i am array query!!!!');
         shape[parsedQueryKey.name] = [getShape(value)];
       } else {
         shape[parsedQueryKey.name] = getShape(value);
@@ -50,7 +46,7 @@ function parseQueryKey(queryKey) {
     returnType: {}
   };
 
-  var match = null;
+  var match;
   if (match = matchObjectQuery(queryKey)) {
     parsed.returnType = {}
   } else if (match = matchArrayQuery(queryKey)) {
@@ -112,7 +108,7 @@ var _handlers = {
   },
   'posts': function (query, input) {
     //console.log('posts received input', input);
-    return Promise.resolve([{id: 1, text: 'iamtext'}, {id: 2,text:'ibetext'}]);
+    return Promise.resolve([{id: 1, text: 'iamtext'}, {id: 2, text: 'ibetext'}]);
   },
   'user': function (query, input) {
     //console.log('user received input', input);
@@ -120,7 +116,7 @@ var _handlers = {
   },
   'cogs': function (query, input) {
     //console.log('cogs received input', input);
-    return Promise.resolve({name:'iamcog'});
+    return Promise.resolve({name: 'iamcog'});
   },
   'x': function (query, input) {
     //console.log('x received input', input);
@@ -218,96 +214,38 @@ function matchShape(shape, output) {
     if (outputShape === null) {
       outputShape = output;
     } else {
-      _.each(output, function(value, key) {
-        if (!outputShape) {
-          console.log('cannot set key out output shape', outputShape);
-          console.log('cannot set key out output shape', key);
-          console.log('cannot set key out output shape', output);
-        }
+      if (!outputShape) {
+        throw new Error('cannot match output '
+          + JSON.stringify(output) + ' to output shape '
+          + JSON.stringify(outputShape));
+      }
+      _.each(output, function (value, key) {
         outputShape[key] = matchShape(shape[key], value);
       });
       outputShape = _.pick(outputShape, _.keys(shape));
+      _.each(outputShape, function (value, key) {
+        if (value === null) {
+          throw new Error('Query output does not contain expected key ' + key);
+        }
+      });
+    }
+  } else if (_.isArray(output)) {
+    if (!_.isArray(shape)) {
+      throw new Error('Output from handler was array, which does not match expected shape ' + JSON.stringify(shape));
+    }
+    if (shape.length === 1 && _.isPlainObject(shape[0])) {
+      var s = shape[0];
+      outputShape = _.map(output, function (o) {
+        return matchShape(s, o);
+      });
+    } else {
+      outputShape = output;
     }
   } else {
     outputShape = output;
   }
   return outputShape;
 }
-
-var Home = {
-  query: function (userId) {
-    var q = {
-      //'Header': Header.query(),
-      'Summary': Summary.query(),
-      //'Bananas': [1, 2, 3, 4],
-      //'hmm()': null
-    };
-
-    return JSON.parse(JSON.stringify(q).replace(new RegExp('<user_id>', 'g'), userId));
-  }
-};
-
-var Header = {
-  query: function () {
-    return {
-      'user(id:<user_id>)': {
-        name: null,
-        foo: {
-          'x()': {i: null},
-          y: 3
-        }
-      }
-    };
-  }
-};
-
-var Summary = {
-  query: function () {
-    return {
-      'posts(user_id:<user_id>,limit:10)[]': Post.query(),
-      baz: 1
-    };
-  }
-};
-
-var Post = {
-  query: function () {
-    return {
-      id: null,
-      text: null,
-      'cogs(limit:3)': {
-        name: null
-      }
-    }
-  }
-};
-
-var PostPage = {
-  query: function () {
-    return {
-      'post(id:<id>)': Post.query()
-    }.query();
-  }
-};
-
-var rootQuery = {
-  'Home': {
-    'Header': {
-      'user(id:1)': {
-        name: null
-      }
-    },
-    'Summary': {
-      'posts(user_id:<user_id>,limit:10) as post': {
-        id: null,
-        text: null,
-        'cogs(limit:3)': {
-          name: null
-        }
-      }
-    }
-  }
-};
 
 module.exports = function (handlers) {
   _handlers = handlers;
@@ -316,25 +254,11 @@ module.exports = function (handlers) {
     _findQueries: findQueries,
 
     run: function (query) {
-      console.log('running query', query);
-      return runQueries(findQueries(query)).then(function(output) {
+      return runQueries(findQueries(query)).then(function (output) {
         var shape = getShape(query);
-        console.log('shape', shape);
         return matchShape(shape, output);
-      }).catch(function(e){
-        console.error(e.stack);
-        throw e;
       });
     }
   }
 };
-
-var queryDef = {a:1};
-runQueries(findQueries(queryDef)).then(function (output) {
-  var shape = getShape(queryDef);
-  var outputShape = matchShape(shape, output);
-  console.log(JSON.stringify(shape));
-  console.log(JSON.stringify(output));
-  console.log(JSON.stringify(outputShape));
-});
 
