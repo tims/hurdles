@@ -103,26 +103,42 @@ function findQueries(nestedQueryDef, pathSoFar) {
   return queries;
 }
 
-function getHandler(name) {
-  return _handlers[name] ? _handlers[name] : function (query, input) {
+function getHandler(name, queryKey) {
+  return _handlers[name] ? _handlers[name] : function (shape, queryParams) {
     return new Promise(function (resolve, reject) {
-      if (query.queryKey) {
+      if (queryKey) {
         reject(new Error('Query requires handler, but no handler found named ' + name));
       } else {
-        resolve(query.shape);
+        resolve(shape);
       }
     });
   }
 }
 
-function handleQuery(query, input) {
+function handleQuery(query) {
+  var shape = query.shape;
+  var queryParams = _.cloneDeep(query.queryParams);
+  _.each(queryParams, function (value, key) {
+    if (value === null || value === undefined) {
+      if (_.contains(_.keys(query.parentOutput), key)) {
+        queryParams[key] = _.cloneDeep(query.parentOutput[key]);
+      } else {
+        throw new Error('query parameter value for ' + key + ' is ' + value);
+      }
+    }
+  });
 
+  var promise;
   if (query.queryKey && _options.cache) {
-    var cacheKey = query.path.join('.');
-    _promiseCache[cacheKey] = _promiseCache[cacheKey] || getHandler(query.name)(query, input);
-    return _promiseCache[cacheKey];
+    var cacheKey = query.queryKey + '(' + JSON.stringify(queryParams) + ')';
+    //TODO Start storing the promised shape and check that the shape we have contains the things we need. If not do the query for the new fields.
+    //TODO then store a third promise made out of the old promise and the new promise.
+    promise = _promiseCache[cacheKey] || getHandler(query.name, query.queryKey)(shape, queryParams);
+    _promiseCache[cacheKey] = promise;
+  } else {
+    promise = getHandler(query.name)(shape, queryParams);
   }
-  return getHandler(query.name)(query, input);
+  return promise;
 }
 
 function runQueries(queries) {
@@ -139,13 +155,13 @@ function runQueries(queries) {
     tree[parent].push(child);
   });
 
-  function processChildren(query, children, input, output, index) {
-    var newInput = _.cloneDeep(input);
-    newInput[query.name] = _.cloneDeep(output);
+  function processChildren(query, children, output, index) {
+    var parentOutput = _.cloneDeep(query.parentOutput || {});
+    parentOutput[query.name] = output;
+
     return Promise.all(_.map(children, function (child) {
-      return runTask(child, newInput, index).then(function (childOutput) {
+      return runTask(child, parentOutput, index).then(function (childOutput) {
         return {
-          input: newInput,
           query: queries[child],
           output: childOutput
         }
@@ -159,24 +175,26 @@ function runQueries(queries) {
   }
 
 
-  function runTask(key, input, index) {
+  function runTask(key, parentOutput, index) {
     var query = key === 'root' ? {name: 'root', shape: {}} : queries[key];
+    query = _.cloneDeep(query);
+    query.parentOutput = parentOutput;
+
     if (index !== undefined) {
-      query = _.cloneDeep(query);
       query.path = _.take(query.path, query.path.length - 1).concat([index, _.takeRight(query.path, 1)]);
     }
     var children = tree[key];
-    var promise = handleQuery(query, input);
+    var promise = handleQuery(query);
     return promise.then(function (output) {
       if (_.isArray(output)) {
         return Promise.all(_.map(output, function (out, index) {
           if (!_.isPlainObject(out)) {
             return out;
           }
-          return processChildren(query, children, input, out, index);
+          return processChildren(query, children, out, index);
         }));
       } else if (_.isPlainObject(output)) {
-        return processChildren(query, children, input, output);
+        return processChildren(query, children, output);
       } else {
         return output;
       }

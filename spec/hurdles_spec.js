@@ -6,6 +6,26 @@
 var hurdlesFactory = require('../src/hurdles');
 var _ = require('lodash');
 
+function Handler(obj) {
+  this.count = 0;
+  this.shapes = [];
+  this.queryParamss = [];
+  var self = this;
+
+  this.handler = function (shape, queryParams) {
+    self.count += 1;
+    self.shapes.push(shape);
+    self.queryParamss.push(queryParams);
+    self.queryParams = queryParams;
+    if (_.isFunction(obj)) {
+      return Promise.resolve(obj(shape, queryParams));
+    }
+    return Promise.resolve(obj);
+  };
+  return this;
+}
+
+
 describe('hurdles', function () {
   var output;
   var asyncError;
@@ -152,11 +172,11 @@ describe('hurdles', function () {
         bar: function () {
           return Promise.resolve({b: 2});
         },
-        recordsInput: function (query, input) {
-          return Promise.resolve({input: input});
+        recordsQueryParams: function (shape, queryParams) {
+          return Promise.resolve({queryParams: queryParams});
         },
-        recordsShape: function (query, input) {
-          return Promise.resolve({input: query.shape});
+        recordsShape: function (shape, queryParams) {
+          return Promise.resolve({shape: shape});
         },
         array: function () {
           return Promise.resolve([1, 2, 3]);
@@ -223,15 +243,18 @@ describe('hurdles', function () {
       }).catch(fail).then(done);
     });
 
-    it('child receives input from parent', function (done) {
+    it('child query params filled by parent', function (done) {
       var queryDef = {
         'foo()': {
           a: null,
-          'recordsInput()': {input: null}
+          'recordsQueryParams()': {
+            _: {foo: null},
+            queryParams: null
+          }
         }
       };
       hurdles.run(queryDef).then(function (output) {
-        expect({root: {}, foo: {a: 1}}).toEqual(output.foo.recordsInput.input);
+        expect({foo: {a: 1}}).toEqual(output.foo.recordsQueryParams.queryParams);
       }).catch(fail).then(done);
     });
 
@@ -256,23 +279,6 @@ describe('hurdles', function () {
             {foo: {a: 1}},
             {foo: {a: 1}},
             {foo: {a: 1}}
-          ]
-        }).toEqual(output);
-      }).catch(fail).then(done);
-    });
-
-    it('children get input from each element of parent\'s output array', function (done) {
-      var queryDef = {
-        'arrayOfObjects[]': {
-          'recordsInput()': {input: null}
-        }
-      };
-      hurdles.run(queryDef).then(function (output) {
-        expect({
-          arrayOfObjects: [
-            {recordsInput: {input: {arrayOfObjects: {x: 1}, root: {}}}},
-            {recordsInput: {input: {arrayOfObjects: {x: 2}, root: {}}}},
-            {recordsInput: {input: {arrayOfObjects: {x: 3}, root: {}}}}
           ]
         }).toEqual(output);
       }).catch(fail).then(done);
@@ -354,6 +360,22 @@ describe('hurdles', function () {
       }).catch(fail).then(done);
     });
 
+    it('should fail if query parameter is null', function (done) {
+      var queryDef = {
+        'foo()': {
+          _: {
+            user: null
+          },
+          a: null
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        fail('This query should not be successful');
+      }).catch(function (e) {
+        expect(e.message).toEqual(jasmine.stringMatching('query parameter value for user is null'));
+      }).then(done);
+    });
+
     it('should include constants from nested query within array query', function (done) {
       var queryDef = {
         'arrayOfObjects[]': {
@@ -367,27 +389,9 @@ describe('hurdles', function () {
       hurdles.run(queryDef).then(function (output) {
         expect({
           arrayOfObjects: [
-            {
-              x: 1,
-              foo: {
-                a: 1,
-                bananas: 123
-              }
-            },
-            {
-              x: 2,
-              foo: {
-                a: 1,
-                bananas: 123
-              }
-            },
-            {
-              x: 3,
-              foo: {
-                a: 1,
-                bananas: 123
-              }
-            }
+            {x: 1, foo: {a: 1, bananas: 123}},
+            {x: 2, foo: {a: 1, bananas: 123}},
+            {x: 3, foo: {a: 1, bananas: 123}}
           ]
         }).toEqual(output);
       }).catch(fail).then(done);
@@ -398,33 +402,84 @@ describe('hurdles', function () {
     var hurdles;
     var handlers;
 
-    function Handler(obj) {
-      this.count = 0;
-      var self = this;
-      this.handler = function () {
-        self.count += 1;
-        if (_.isFunction(obj)) {
-          return Promise.resolve(obj(self.count));
-        }
-        return Promise.resolve(obj);
-      };
-      return this;
-    }
-
-
     beforeEach(function () {
       handlers = {
+        user: new Handler({id: 1, name: 'Tim'}),
         foo: new Handler({x: 1}),
         bar: new Handler({y: 2}),
-        counter: new Handler(function (count) {
-          return {count: count}
+        array: new Handler([{a: 1}, {a: 2}, {a: 3}]),
+        arrayAPlus10: new Handler(function (shape, queryParams) {
+          return {result: queryParams.array.a * 10};
         })
       };
       hurdles = hurdlesFactory({
+        user: handlers.user.handler,
         foo: handlers.foo.handler,
         bar: handlers.bar.handler,
-        counter: handlers.counter.handler
-      });
+        array: handlers.array.handler,
+        arrayAPlus10: handlers.arrayAPlus10.handler
+      }, {cache: true});
+    });
+
+    it('should fill null query parameters with parent queries', function (done) {
+      var queryDef = {
+        'user()': {
+          id: null,
+          name: null,
+          'foo()': {
+            _: {
+              user: null
+            },
+            x: null
+          }
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.foo.queryParams).toEqual({
+          user: {
+            id: 1,
+            name: 'Tim'
+          }
+        });
+        expect(output).toEqual({
+          user: {
+            id: 1,
+            name: 'Tim',
+            foo: {
+              x: 1
+            }
+          }
+        });
+      }).catch(fail).then(done);
+    });
+
+    it('should fill null query parameters with parent array queries', function (done) {
+      var queryDef = {
+        'array[]': {
+          a: null,
+          'arrayAPlus10()': {
+            _: {
+              array: null
+            },
+            result: null
+          }
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(output).toEqual({
+          array: [
+            {a: 1, arrayAPlus10: {result: 10}},
+            {a: 2, arrayAPlus10: {result: 20}},
+            {a: 3, arrayAPlus10: {result: 30}}
+          ]
+        });
+        expect(handlers.arrayAPlus10.count).toEqual(3);
+        expect(handlers.arrayAPlus10.queryParamss).toEqual([
+          {array: {a: 1}},
+          {array: {a: 2}},
+          {array: {a: 3}}
+        ])
+      }).catch(fail).then(done);
     });
 
     it('should execute once when called once', function (done) {
@@ -452,106 +507,88 @@ describe('hurdles', function () {
 
     it('should execute twice when called twice with different input', function (done) {
       var queryDef = {
-        baz1: {'counter()': {_: {id: 1}, count: null}},
-        baz2: {'counter()': {_: {id: 2}, count: null}}
+        baz1: {'foo()': {_: {id: 1}, x: null}},
+        baz2: {'foo()': {_: {id: 2}, x: null}}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
-          baz1: {counter: {count: 1}},
-          baz2: {counter: {count: 2}}
+          baz1: {foo: {x: 1}},
+          baz2: {foo: {x: 1}}
         }).toEqual(output);
-        expect(handlers.counter.count).toEqual(2);
-      }).catch(function (e) {
-        console.log(e.stack);
-        fail(e);
-      }).then(done);
+        expect(handlers.foo.count).toEqual(2);
+      }).catch(fail).then(done);
     });
 
-    it('should execute twice when called twice with the same input but different paths', function (done) {
+    it('should execute once when called twice with the same input but different paths', function (done) {
       var queryDef = {
-        baz1: {'counter()': {_: {id: 1}, count: null}},
-        baz2: {'counter()': {_: {id: 1}, count: null}}
+        baz1: {'foo()': {_: {id: 1}, x: null}},
+        baz2: {'foo()': {_: {id: 1}, x: null}}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
-          baz1: {counter: {count: 1}},
-          baz2: {counter: {count: 2}}
+          baz1: {foo: {x: 1}},
+          baz2: {foo: {x: 1}}
         }).toEqual(output);
-        expect(handlers.counter.count).toEqual(2);
+        expect(handlers.foo.count).toEqual(1);
       }).catch(fail).then(done);
     });
 
     it('should execute once when same query is run twice', function (done) {
       var queryDef = {
-        'counter()': {count: null}
+        'foo()': {x: null}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
-          counter: {count: 1}
+          foo: {x: 1}
         }).toEqual(output);
-        expect(handlers.counter.count).toEqual(1);
+        expect(handlers.foo.count).toEqual(1);
       }).then(function () {
         return hurdles.run(queryDef)
       }).then(function (output) {
         expect({
-          counter: {count: 1}
+          foo: {x: 1}
         }).toEqual(output);
-        expect(handlers.counter.count).toEqual(1);
+        expect(handlers.foo.count).toEqual(1);
       }).catch(fail).then(done);
     });
 
   });
 
-  describe('handlers with caching disabled', function () {
-    var hurdles;
-    var handlers;
-
-    function Handler(obj) {
-      this.count = 0;
-      var self = this;
-      this.handler = function () {
-        self.count += 1;
-        if (_.isFunction(obj)) {
-          return Promise.resolve(obj(self.count));
-        }
-        return Promise.resolve(obj);
-      };
-      return this;
-    }
-
-
-    beforeEach(function () {
-      handlers = {
-        foo: new Handler({x: 1}),
-        bar: new Handler({y: 2}),
-        counter: new Handler(function (count) {
-          return {count: count}
-        })
-      };
-      hurdles = hurdlesFactory({
-        foo: handlers.foo.handler,
-        bar: handlers.bar.handler,
-        counter: handlers.counter.handler
-      }, {cache: false});
-    });
-
-    it('should execute twice when same query is run twice with caching disabled', function (done) {
-      var queryDef = {
-        'counter()': {count: null}
-      };
-      hurdles.run(queryDef).then(function (output) {
-        expect({
-          counter: {count: 1}
-        }).toEqual(output);
-        expect(handlers.counter.count).toEqual(1);
-      }).then(function () {
-        return hurdles.run(queryDef)
-      }).then(function (output) {
-        expect({
-          counter: {count: 2}
-        }).toEqual(output);
-        expect(handlers.counter.count).toEqual(2);
-      }).catch(fail).then(done);
-    });
-  });
+  //describe('handler returning fields based on the requested shape', function () {
+  //  var handlers;
+  //  var hurdles;
+  //  beforeEach(function () {
+  //    handlers = {
+  //      user: new Handler(function(shape, queryParams) {
+  //        return _.pick({id: 1, name: 'Tim'}, _.keys(shape));
+  //      })
+  //    };
+  //    hurdles = hurdlesFactory({
+  //      user: handlers.user.handler,
+  //    });
+  //  });
+  //
+  //  it('should provide callers with different shapes the correct shape', function (done) {
+  //    var queryDef = {
+  //      baz1: {'user()': {_: {id: 1}, id: null}},
+  //      baz2: {'user()': {_: {id: 1}, name: null}}
+  //    };
+  //    hurdles.run(queryDef).then(function (output) {
+  //      expect({
+  //        baz1: {user: {id: 1}},
+  //        baz2: {user: {name: 'Tim'}}
+  //      }).toEqual(output);
+  //    }).catch(fail).then(done);
+  //  });
+  //
+  //  it('should be called twice when two queries have non overlapping shapes', function (done) {
+  //    var queryDef = {
+  //      baz1: {'user()': {_: {id: 1}, id: null}},
+  //      baz2: {'user()': {_: {id: 1}, name: null}}
+  //    };
+  //    hurdles.run(queryDef).then(function (output) {
+  //      expect(handlers.user.count).toEqual(2);
+  //    }).catch(fail).then(done);
+  //  });
+  //})
 });
