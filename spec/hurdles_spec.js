@@ -50,7 +50,7 @@ describe('hurdles', function () {
     it('should return array for array queries', function () {
       var hurdles = hurdlesFactory({});
       expect(hurdles._getShape({
-        'a[id:1]': {a: null}
+        'a[]': {a: null}
       })).toEqual({
         a: [{a: null}]
       });
@@ -59,7 +59,7 @@ describe('hurdles', function () {
     it('should strip query parameters from queries', function () {
       var hurdles = hurdlesFactory({});
       expect(hurdles._getShape({
-        'a(id:1)': {a: null}
+        'a()': {_: {id: 1}, a: null}
       })).toEqual({
         a: {a: null}
       });
@@ -68,7 +68,7 @@ describe('hurdles', function () {
     it('should strip query parameters from array queries', function () {
       var hurdles = hurdlesFactory({});
       expect(hurdles._getShape({
-        'a[id:1]': {a: null}
+        'a[]': {_: {id: 1}, a: null}
       })).toEqual({
         a: [{a: null}]
       });
@@ -176,6 +176,18 @@ describe('hurdles', function () {
       };
       hurdles.run(queryDef).then(function (output) {
         expect({hello: 'hello world'}).toEqual(output);
+      }).catch(fail).then(done);
+    });
+
+    it('knows that input should not be treated as a constant and thus should not be in the output', function (done) {
+      var queryDef = {
+        'foo()': {
+          _: {id: 123},
+          a: null
+        },
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({foo: {a: 1}}).toEqual(output);
       }).catch(fail).then(done);
     });
 
@@ -309,7 +321,7 @@ describe('hurdles', function () {
       hurdles.run(queryDef).then(function (output) {
         fail('expected rejection because dateOfBirth isn\'t available');
       }).catch(function (e) {
-        expect(e.message).toEqual(jasmine.stringMatching('does not contain expected key dateOfBirth'));
+        expect(e.message).toEqual(jasmine.stringMatching('does not contain value for dateOfBirth'));
       }).then(done);
     });
 
@@ -440,8 +452,8 @@ describe('hurdles', function () {
 
     it('should execute twice when called twice with different input', function (done) {
       var queryDef = {
-        baz1: {'counter(id:1)': {count: null}},
-        baz2: {'counter(id:2)': {count: null}}
+        baz1: {'counter()': {_: {id: 1}, count: null}},
+        baz2: {'counter()': {_: {id: 2}, count: null}}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
@@ -449,13 +461,16 @@ describe('hurdles', function () {
           baz2: {counter: {count: 2}}
         }).toEqual(output);
         expect(handlers.counter.count).toEqual(2);
-      }).catch(fail).then(done);
+      }).catch(function (e) {
+        console.log(e.stack);
+        fail(e);
+      }).then(done);
     });
 
     it('should execute twice when called twice with the same input but different paths', function (done) {
       var queryDef = {
-        baz1: {'counter(id:1)': {count: null}},
-        baz2: {'counter(id:1)': {count: null}}
+        baz1: {'counter()': {_: {id: 1}, count: null}},
+        baz2: {'counter()': {_: {id: 1}, count: null}}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
@@ -468,7 +483,7 @@ describe('hurdles', function () {
 
     it('should execute once when same query is run twice', function (done) {
       var queryDef = {
-        'counter(id:1)': {count: null}
+        'counter()': {count: null}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({
@@ -487,7 +502,7 @@ describe('hurdles', function () {
 
   });
 
-  describe('handlers with caching disabled', function() {
+  describe('handlers with caching disabled', function () {
     var hurdles;
     var handlers;
 
@@ -522,7 +537,7 @@ describe('hurdles', function () {
 
     it('should execute twice when same query is run twice with caching disabled', function (done) {
       var queryDef = {
-        'counter(id:1)': {count: null}
+        'counter()': {count: null}
       };
       hurdles.run(queryDef).then(function (output) {
         expect({

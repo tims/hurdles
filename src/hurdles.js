@@ -5,15 +5,15 @@ var _handlers = {};
 var _promiseCache = {};
 
 function matchArrayQuery(key) {
-  return key.match(/(\w+)\[((\w+:[<\w>]+?)?(,\w+:[<\w>]+)*)\]/);
+  return key.match(/(\w+)\[\]/);
 }
 
 function matchObjectQuery(key) {
-  return key.match(/(\w+)\(((\w+:[<\w>]+?)?(,\w+:[<\w>]+)*)\)/);
+  return key.match(/(\w+)\(\)/);
 }
 
 function isQuery(key) {
-  return key.match(/\w+(\(.*\)|\[.*\])/);
+  return key.match(/\w+(\(\)|\[\])/);
 }
 
 function getShape(queryDef) {
@@ -30,10 +30,12 @@ function getShape(queryDef) {
       } else {
         shape[parsedQueryKey.name] = getShape(value);
       }
-    } else if (_.isPlainObject(value)) {
-      shape[key] = getShape(value);
-    } else {
-      shape[key] = value;
+    } else if (key !== '_') {
+      if (_.isPlainObject(value)) {
+        shape[key] = getShape(value);
+      } else {
+        shape[key] = value;
+      }
     }
   });
   return shape;
@@ -46,7 +48,6 @@ function parseQueryKey(queryKey) {
 
   var parsed = {
     name: queryKey,
-    queryParams: {},
     returnType: {}
   };
 
@@ -57,12 +58,6 @@ function parseQueryKey(queryKey) {
     parsed.returnType = []
   }
   parsed.name = match[1];
-  if (!_.isEmpty(match[2])) {
-    _.each(match[2].split(','), function (arg) {
-      var pair = arg.split(':');
-      parsed.queryParams[pair[0]] = pair[1];
-    });
-  }
   return parsed;
 }
 
@@ -80,13 +75,15 @@ function findQueries(nestedQueryDef, pathSoFar) {
       var queryDef = nestedQueryDef[key];
       var path = _.cloneDeep(pathSoFar);
       var qs = [];
-      if (isQuery(key)) {
+      if (key === '_') {
+        //skip input
+      } else if (isQuery(key)) {
         var parsed = parseQueryKey(key);
         path.push(key);
         qs = [{
           name: parsed.name,
           queryKey: key,
-          queryParams: parsed.queryParams,
+          queryParams: (queryDef || {})._ || {},
           path: path,
           shape: getShape(queryDef)
         }];
@@ -119,6 +116,7 @@ function getHandler(name) {
 }
 
 function handleQuery(query, input) {
+
   if (query.queryKey && _options.cache) {
     var cacheKey = query.path.join('.');
     _promiseCache[cacheKey] = _promiseCache[cacheKey] || getHandler(query.name)(query, input);
@@ -131,7 +129,7 @@ function runQueries(queries) {
   var sortedQueries = _.sortBy(queries, 'path');
 
   var tree = {};
-  var queries = {}
+  var queries = {};
 
   _.each(sortedQueries, function (q) {
     var parent = q.path.length <= 1 ? 'root' : _.take(q.path, q.path.length - 1).join('.');
@@ -206,7 +204,7 @@ function matchShape(shape, output) {
       outputShape = _.pick(outputShape, _.keys(shape));
       _.each(outputShape, function (value, key) {
         if (value === null) {
-          throw new Error('Query output does not contain expected key ' + key);
+          throw new Error('Query output ' + JSON.stringify(output) + ' does not contain value for ' + key);
         }
       });
     }

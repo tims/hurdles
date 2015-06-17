@@ -7,12 +7,21 @@ var fs = require('fs');
 var bodyParser = require('body-parser');
 var _ = require('lodash');
 
+
+var counter = 0;
 var hurdles = require('./hurdles')({
   foo: function (query, input) {
     return Promise.resolve({a: 1});
   },
   bar: function (query, input) {
     return Promise.resolve({b: 2});
+  },
+  count: function(query, input) {
+    counter++;
+    return Promise.resolve(counter);
+  },
+  bars: function(query, input) {
+    return Promise.resolve([{b: 1}, {b:2}]);
   },
   user: function (query, input) {
     if (query.queryParams.id === 1) {
@@ -44,16 +53,7 @@ function handleResponse(promise, res) {
 
 app.post('/', function (req, res) {
   var query = req.body;
-  console.log('QUERY', query);
-  handleResponse(hurdles.run(query), res);
-});
-
-app.get('/', function (req, res) {
-  console.log('/', JSON.stringify(req.query));
-  var query = {};
-  if (req.query.q) {
-    query = JSON.parse(req.query.q);
-  }
+  console.log(req);
   console.log('QUERY', query);
   handleResponse(hurdles.run(query), res);
 });
