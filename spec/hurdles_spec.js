@@ -554,41 +554,95 @@ describe('hurdles', function () {
 
   });
 
-  //describe('handler returning fields based on the requested shape', function () {
-  //  var handlers;
-  //  var hurdles;
-  //  beforeEach(function () {
-  //    handlers = {
-  //      user: new Handler(function(shape, queryParams) {
-  //        return _.pick({id: 1, name: 'Tim'}, _.keys(shape));
-  //      })
-  //    };
-  //    hurdles = hurdlesFactory({
-  //      user: handlers.user.handler,
-  //    });
-  //  });
-  //
-  //  it('should provide callers with different shapes the correct shape', function (done) {
-  //    var queryDef = {
-  //      baz1: {'user()': {_: {id: 1}, id: null}},
-  //      baz2: {'user()': {_: {id: 1}, name: null}}
-  //    };
-  //    hurdles.run(queryDef).then(function (output) {
-  //      expect({
-  //        baz1: {user: {id: 1}},
-  //        baz2: {user: {name: 'Tim'}}
-  //      }).toEqual(output);
-  //    }).catch(fail).then(done);
-  //  });
-  //
-  //  it('should be called twice when two queries have non overlapping shapes', function (done) {
-  //    var queryDef = {
-  //      baz1: {'user()': {_: {id: 1}, id: null}},
-  //      baz2: {'user()': {_: {id: 1}, name: null}}
-  //    };
-  //    hurdles.run(queryDef).then(function (output) {
-  //      expect(handlers.user.count).toEqual(2);
-  //    }).catch(fail).then(done);
-  //  });
-  //})
+  describe('handler returning fields based on the requested shape', function () {
+    var handlers;
+    var hurdles;
+    beforeEach(function () {
+      handlers = {
+        user: new Handler(function (shape, queryParams) {
+          return _.pick({id: 1, name: 'Tim'}, _.keys(shape));
+        }),
+        baz: new Handler({})
+      };
+      hurdles = hurdlesFactory({
+        user: handlers.user.handler,
+        baz: handlers.baz.handler,
+      });
+    });
+
+    it('should provide callers with different shapes the correct shape', function (done) {
+      var queryDef = {
+        baz1: {'user()': {_: {id: 1}, id: null}},
+        baz2: {'user()': {_: {id: 1}, name: null}}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({
+          baz1: {user: {id: 1}},
+          baz2: {user: {name: 'Tim'}}
+        }).toEqual(output);
+      }).catch(fail).then(done);
+    });
+
+    it('should be called once even when two queries have non overlapping shapes', function (done) {
+      var queryDef = {
+        baz1: {'user()': {_: {id: 1}, id: null}},
+        baz2: {'user()': {_: {id: 1}, name: null}}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.user.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
+
+    it('should be called once when two queries have same shapes and query param needs to be filled in by a parent', function (done) {
+      var queryDef = {
+        'a': {
+          'baz()': {'user()': {_: {baz: null}, id: null}}
+        },
+        'b': {
+          'baz()': {'user()': {_: {baz: null}, id: null}}
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.user.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
+
+    it('should be called twice when two queries have different shapes and query param needs to be filled in by a parent', function (done) {
+      var queryDef = {
+        'a': {
+          'baz()': {'user()': {_: {baz: null}, id: null}}
+        },
+        'b': {
+          'baz()': {'user()': {_: {baz: null}, name: null}}
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.user.count).toEqual(2);
+      }).catch(fail).then(done);
+    });
+
+    it('should be called once when first query shape is a superset of second query', function (done) {
+      var queryDef = {
+        baz1: {'user()': {_: {id: 1}, id: null, name: null}},
+        baz2: {'user()': {_: {id: 1}, name: null}}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.user.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
+
+    it('should be called twice when first query shape is a subset of second query', function (done) {
+      var queryDef = {
+        baz1: {'user()': {_: {id: 1}, name: null}},
+        baz2: {'user()': {_: {id: 1}, id: null, name: null}}
+      };
+
+      var x = {
+        baz1: {'user()': {name: 'tim'}}
+      }
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.user.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
+  })
 });

@@ -2,7 +2,6 @@ var _ = require('lodash');
 
 var _options = {};
 var _handlers = {};
-var _promiseCache = {};
 
 function matchArrayQuery(key) {
   return key.match(/(\w+)\[\]/);
@@ -103,6 +102,31 @@ function findQueries(nestedQueryDef, pathSoFar) {
   return queries;
 }
 
+/* Merge shapes of queries which have completed inputs and build their promises. */
+function preCacheQueries(queries) {
+  var groupBy = {};
+  _.each(queries, function (query) {
+    if (!query.queryKey) {
+      return;
+    }
+    var hasAllValues = _.reduce(_.values(query.queryParams), function (acc, val) {
+      return acc && (val !== null);
+    }, true);
+    if (hasAllValues) {
+      var cacheKey = _executionCache.getKey(query);
+      groupBy[cacheKey] = groupBy[cacheKey] || [];
+      groupBy[cacheKey].push(query);
+    }
+  });
+
+  _.each(groupBy, function (groupedQueries, key) {
+    var aggregateShape = _.reduce(_.map(groupedQueries, 'shape'), _.assign, {});
+    var query = _.cloneDeep(groupedQueries[0]);
+    query.shape = aggregateShape;
+    _executionCache.execute(query);
+  });
+}
+
 function getHandler(name, queryKey) {
   return _handlers[name] ? _handlers[name] : function (shape, queryParams) {
     return new Promise(function (resolve, reject) {
@@ -115,13 +139,54 @@ function getHandler(name, queryKey) {
   }
 }
 
+/* Takes queries and stores their results collected by query name and query parameters */
+function ExecutionCache() {
+  var cache = {};
+
+  function getKey(query) {
+    return query.queryKey + '(' + JSON.stringify(query.queryParams) + ')'
+  }
+
+  function get(query) {
+    return cache[getKey(query)]
+  }
+
+  this.execute = function (query) {
+    var query = _.cloneDeep(query);
+    var execution = get(query);
+    if (execution) {
+      var requestedKeys = _.keys(query.shape);
+      if (_.intersection(_.keys(execution.shape), requestedKeys).length != requestedKeys.length) {
+        // TODO we probably should also merge the nested shape
+        var newShape = _.assign(execution.shape, query.shape);
+        query.shape = newShape;
+        execution = {
+          shape: newShape,
+          promise: getHandler(query.name, query.queryKey)(query.shape, query.queryParams)
+        }
+      }
+    } else {
+      execution = {
+        shape: query.shape,
+        promise: getHandler(query.name, query.queryKey)(query.shape, query.queryParams)
+      };
+    }
+    cache[getKey(query)] = execution;
+    return execution;
+  };
+
+  this.get = get;
+  this.getKey = getKey;
+  return this;
+}
+var _executionCache = new ExecutionCache();
+
 function handleQuery(query) {
-  var shape = query.shape;
-  var queryParams = _.cloneDeep(query.queryParams);
-  _.each(queryParams, function (value, key) {
+  var query = _.cloneDeep(query);
+  _.each(query.queryParams, function (value, key) {
     if (value === null || value === undefined) {
       if (_.contains(_.keys(query.parentOutput), key)) {
-        queryParams[key] = _.cloneDeep(query.parentOutput[key]);
+        query.queryParams[key] = _.cloneDeep(query.parentOutput[key]);
       } else {
         throw new Error('query parameter value for ' + key + ' is ' + value);
       }
@@ -130,18 +195,18 @@ function handleQuery(query) {
 
   var promise;
   if (query.queryKey && _options.cache) {
-    var cacheKey = query.queryKey + '(' + JSON.stringify(queryParams) + ')';
-    //TODO Start storing the promised shape and check that the shape we have contains the things we need. If not do the query for the new fields.
-    //TODO then store a third promise made out of the old promise and the new promise.
-    promise = _promiseCache[cacheKey] || getHandler(query.name, query.queryKey)(shape, queryParams);
-    _promiseCache[cacheKey] = promise;
+    var execution = _executionCache.execute(query);
+    promise = execution.promise;
   } else {
-    promise = getHandler(query.name)(shape, queryParams);
+    promise = getHandler(query.name)(query.shape, query.queryParams);
   }
   return promise;
 }
 
 function runQueries(queries) {
+  if (_options.cache) {
+    preCacheQueries(queries);
+  }
   var sortedQueries = _.sortBy(queries, 'path');
 
   var tree = {};
@@ -246,7 +311,7 @@ function matchShape(shape, output) {
 
 module.exports = function (handlers, options) {
   _handlers = handlers;
-  _promiseCache = {};
+  _executionCache = new ExecutionCache();
   _options = _.assign({cache: true}, options || {});
   return {
     _getShape: getShape,
