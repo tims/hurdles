@@ -1,6 +1,6 @@
 {
   "name": "hurdles",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "main": "src/hurdles.js",
   "dependencies": {
     "lodash": "^3.9.2"
@@ -30,5 +30,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/tims/hurdles.git"
-  }
+  },
+  "license": "BSD-3-Clause"
 }
