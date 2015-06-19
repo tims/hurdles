@@ -1,6 +1,6 @@
 {
   "name": "hurdles",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "main": "src/hurdles.js",
   "dependencies": {
     "lodash": "^3.9.2"
