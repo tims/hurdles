@@ -10,13 +10,17 @@ function Handler(obj) {
   this.count = 0;
   this.shapes = [];
   this.queryParamss = [];
+  this.types = [];
   var self = this;
 
-  this.handler = function (shape, queryParams) {
+  this.handler = function (shape, queryParams, type) {
     self.count += 1;
     self.shapes.push(shape);
     self.queryParamss.push(queryParams);
     self.queryParams = queryParams;
+    self.types.push(type);
+    self.type = type;
+
     if (_.isFunction(obj)) {
       return Promise.resolve(obj(shape, queryParams));
     }
@@ -92,70 +96,6 @@ describe('hurdles', function () {
       })).toEqual({
         a: [{a: null}]
       });
-    });
-  });
-
-  describe('findQueries', function () {
-    it('finds most basic possible task', function () {
-      var hurdles = hurdlesFactory({});
-
-      var queryDef = {
-        'foo()': null
-      };
-      var tasks = hurdles._findQueries(queryDef, ['root']);
-      expect([{
-        name: 'foo',
-        queryKey: 'foo()',
-        queryParams: Object({}),
-        path: ['root', 'foo()'],
-        shape: null
-      }]).toEqual(tasks);
-    });
-
-    it('splits query into two tasks', function () {
-      var hurdles = hurdlesFactory({});
-
-      var queryDef = {
-        'foo()': {
-          'bar()': null
-        }
-      };
-      var tasks = hurdles._findQueries(queryDef, ['root']);
-      expect([{
-        name: 'foo',
-        queryKey: 'foo()',
-        queryParams: Object({}),
-        path: ['root', 'foo()'],
-        shape: {bar: null}
-      }, {
-        name: 'bar',
-        queryKey: 'bar()',
-        queryParams: Object({}),
-        path: ['root', 'foo()', 'bar()'],
-        shape: null
-      }]).toEqual(tasks);
-    });
-
-    it('finds two tasks at same depth', function () {
-      var hurdles = hurdlesFactory({});
-      var queryDef = {
-        'foo()': null,
-        'bar()': null
-      };
-      var tasks = hurdles._findQueries(queryDef, ['root']);
-      expect([{
-        name: 'foo',
-        queryKey: 'foo()',
-        queryParams: Object({}),
-        path: ['root', 'foo()'],
-        shape: null
-      }, {
-        name: 'bar',
-        queryKey: 'bar()',
-        queryParams: Object({}),
-        path: ['root', 'bar()'],
-        shape: null
-      }]).toEqual(tasks);
     });
   });
 
@@ -552,6 +492,16 @@ describe('hurdles', function () {
       }).catch(fail).then(done);
     });
 
+
+    it('should be be called with type update', function (done) {
+      var queryDef = {
+        'update foo()': {_: {id: 1}, x: null}
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(handlers.foo.count).toEqual(1);
+        expect(handlers.foo.type).toEqual('update');
+      }).catch(fail).then(done);
+    });
   });
 
   describe('handler returning fields based on the requested shape', function () {
@@ -636,10 +586,6 @@ describe('hurdles', function () {
         baz1: {'user()': {_: {id: 1}, name: null}},
         baz2: {'user()': {_: {id: 1}, id: null, name: null}}
       };
-
-      var x = {
-        baz1: {'user()': {name: 'tim'}}
-      }
       hurdles.run(queryDef).then(function (output) {
         expect(handlers.user.count).toEqual(1);
       }).catch(fail).then(done);

@@ -4,11 +4,11 @@ var _options = {};
 var _handlers = {};
 
 function matchArrayQuery(key) {
-  return key.match(/(\w+)\[\]/);
+  return key.match(/(get|new|update|delete)?\s*(\w+)\[\]/);
 }
 
 function matchObjectQuery(key) {
-  return key.match(/(\w+)\(\)/);
+  return key.match(/(get|new|update|delete)?\s*(\w+)\(\)/);
 }
 
 function isQuery(key) {
@@ -56,7 +56,13 @@ function parseQueryKey(queryKey) {
   } else if (match = matchArrayQuery(queryKey)) {
     parsed.returnType = []
   }
-  parsed.name = match[1];
+  parsed.name = match[2];
+  var types = ['new', 'update', 'delete', 'get'];
+  if (_(types).contains(match[1])) {
+    parsed.type = match[1];
+  } else {
+    parsed.type = 'get';
+  }
   return parsed;
 }
 
@@ -84,7 +90,8 @@ function findQueries(nestedQueryDef, pathSoFar) {
           queryKey: key,
           queryParams: (queryDef || {})._ || {},
           path: path,
-          shape: getShape(queryDef)
+          shape: getShape(queryDef),
+          type: parsed.type
         }];
       } else {
         path.push(key);
@@ -162,13 +169,13 @@ function ExecutionCache() {
         query.shape = newShape;
         execution = {
           shape: newShape,
-          promise: getHandler(query.name, query.queryKey)(query.shape, query.queryParams)
+          promise: getHandler(query.name, query.queryKey)(query.shape, query.queryParams, query.type)
         }
       }
     } else {
       execution = {
         shape: query.shape,
-        promise: getHandler(query.name, query.queryKey)(query.shape, query.queryParams)
+        promise: getHandler(query.name, query.queryKey)(query.shape, query.queryParams, query.type)
       };
     }
     cache[getKey(query)] = execution;
@@ -198,7 +205,7 @@ function handleQuery(query) {
     var execution = _executionCache.execute(query);
     promise = execution.promise;
   } else {
-    promise = getHandler(query.name)(query.shape, query.queryParams);
+    promise = getHandler(query.name)(query.shape, query.queryParams, query.type);
   }
   return promise;
 }
@@ -316,6 +323,7 @@ module.exports = function (handlers, options) {
   return {
     _getShape: getShape,
     _findQueries: findQueries,
+    _parseQueryKey: parseQueryKey,
 
     run: function (query) {
       return runQueries(findQueries(query)).then(function (output) {
@@ -325,4 +333,3 @@ module.exports = function (handlers, options) {
     }
   }
 };
-
