@@ -98,5 +98,26 @@ describe('hurdles', function () {
         shape: null
       }]).toEqual(tasks);
     });
+
+    it('ignore input object', function () {
+      var hurdles = hurdlesFactory({});
+      var queryDef = {
+        'foo()': {
+          _: {bar: {x: 1}},
+          y: null
+        },
+      };
+      var tasks = hurdles._findQueries(queryDef, ['root']);
+      console.log(JSON.stringify(tasks));
+
+      expect([{
+        name: 'foo',
+        queryKey: 'foo()',
+        queryParams: {bar: {x: 1}},
+        path: ['root', 'foo()'],
+        type: 'get',
+        shape: {y: null}
+      }]).toEqual(tasks);
+    });
   });
 });

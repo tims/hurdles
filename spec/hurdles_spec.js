@@ -233,7 +233,7 @@ describe('hurdles', function () {
       }).catch(fail).then(done);
     });
 
-    it('can define constants within a query', function (done) {
+    it('can define integer constants within a query', function (done) {
       var queryDef = {
         'foo()': {
           a: null,
@@ -242,6 +242,18 @@ describe('hurdles', function () {
       };
       hurdles.run(queryDef).then(function (output) {
         expect({foo: {a: 1, x: 1}}).toEqual(output);
+      }).catch(fail).then(done);
+    });
+
+    it('can define string constants within a query', function (done) {
+      var queryDef = {
+        'foo()': {
+          a: null,
+          x: "abcd"
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect({foo: {a: 1, x: "abcd"}}).toEqual(output);
       }).catch(fail).then(done);
     });
 

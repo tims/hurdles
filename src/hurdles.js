@@ -16,7 +16,7 @@ function isQuery(key) {
 }
 
 function getShape(queryDef) {
-  if (_.isArray(queryDef) || _.isEmpty(queryDef)) {
+  if (_.isArray(queryDef) || _.isEmpty(queryDef) || _.isString(queryDef)) {
     return queryDef;
   }
 
@@ -73,37 +73,38 @@ function findQueries(nestedQueryDef, pathSoFar) {
   }
 
   var queries = [];
-  if (_.isArray(nestedQueryDef)) {
-    // Should we allow this?
-  } else {
+  if (_.isPlainObject(nestedQueryDef)) {
     queries = _.flatten(_.map(nestedQueryDef, function (queryDef, key) {
       var queryDef = nestedQueryDef[key];
       var path = _.cloneDeep(pathSoFar);
       var qs = [];
       if (key === '_') {
         //skip input
-      } else if (isQuery(key)) {
-        var parsed = parseQueryKey(key);
-        path.push(key);
-        qs = [{
-          name: parsed.name,
-          queryKey: key,
-          queryParams: (queryDef || {})._ || {},
-          path: path,
-          shape: getShape(queryDef),
-          type: parsed.type
-        }];
       } else {
-        path.push(key);
-        if (!_.isEmpty(queryDef)) {
+        if (isQuery(key)) {
+          var parsed = parseQueryKey(key);
+          path.push(key);
           qs = [{
-            name: key,
+            name: parsed.name,
+            queryKey: key,
+            queryParams: (queryDef || {})._ || {},
             path: path,
-            shape: getShape(queryDef)
+            shape: getShape(queryDef),
+            type: parsed.type
           }];
+        } else {
+          path.push(key);
+          if (!_.isEmpty(queryDef)) {
+            qs = [{
+              name: key,
+              path: path,
+              shape: getShape(queryDef)
+            }];
+          }
         }
+        qs = qs.concat(findQueries(queryDef, path));
       }
-      return qs.concat(findQueries(queryDef, path));
+      return qs;
     }));
   }
   return queries;
