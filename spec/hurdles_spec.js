@@ -514,6 +514,34 @@ describe('hurdles', function () {
         expect(handlers.foo.type).toEqual('update');
       }).catch(fail).then(done);
     });
+
+    it('should execute child once when running same query twice and child takes parent as input', function (done) {
+      var queryDef = {
+        'foo()': {
+          'bar()': {
+            _: {
+              foo: null
+            },
+            y: null
+          },
+          x: null
+        }
+      };
+      hurdles.run(queryDef).then(function (output) {
+        expect(output).toEqual({
+          foo: {x: 1, bar: {y: 2}}
+        });
+        expect(handlers.foo.count).toEqual(1);
+        expect(handlers.bar.count).toEqual(1);
+      }).then(function () {
+        return hurdles.run(queryDef)
+      }).then(function (output) {
+        expect(output).toEqual({
+          foo: {x: 1, bar: {y: 2}}
+        });
+        expect(handlers.bar.count).toEqual(1);
+      }).catch(fail).then(done);
+    });
   });
 
   describe('handler returning fields based on the requested shape', function () {

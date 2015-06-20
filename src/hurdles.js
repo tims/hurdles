@@ -259,6 +259,7 @@ function runQueries(queries) {
     var children = tree[key];
     var promise = handleQuery(query);
     return promise.then(function (output) {
+      output = _.cloneDeep(output);
       if (_.isArray(output)) {
         return Promise.all(_.map(output, function (out, index) {
           if (!_.isPlainObject(out)) {
