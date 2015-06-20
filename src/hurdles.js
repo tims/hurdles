@@ -79,7 +79,7 @@ function findQueries(nestedQueryDef, pathSoFar) {
       var path = _.cloneDeep(pathSoFar);
       var qs = [];
       if (key === '_') {
-        //skip input
+        //skip query parameters
       } else {
         if (isQuery(key)) {
           var parsed = parseQueryKey(key);
