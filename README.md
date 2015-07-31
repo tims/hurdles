@@ -48,7 +48,9 @@ That's what Relay, and Hurdles tries to do.
 handlers 
     
     var handlers = {
-        user: function(shape, queryParams, type) { return Promise.resolve({"id":1,"name":"Tim","post_count":3}); 
+        user: function(shape, queryParams, type) { 
+            return Promise.resolve({"id":1,"name":"Tim","post_count":3});
+        }
     }
     
 Query
@@ -76,7 +78,9 @@ Output
 Handlers
  
     var handlers = {
-        user: function(shape, queryParams, type) { return Promise.resolve({"id":1,"name":"Tim","post_count":3}); }
+        user: function(shape, queryParams, type) { 
+            return Promise.resolve({"id":1,"name":"Tim","post_count":3}); 
+        },
         posts: function (shape, queryParams, type) {
             if (queryParams.user.id === 1) {
                 return Promise.resolve([{text: 'first'}, {text: 'second'}]);
